@@ -95,3 +95,10 @@ def test_en_has_no_pivot(monkeypatch):
     from autosub.stages import translate
     monkeypatch.setattr(translate, "translate_texts", lambda cfg, t, lang, used, progress=None: ([lang] * len(t), 0))
     assert translate.translate_via_pivot({"pivot": {"vi": "en"}}, ["a"], "en", set()) == (["en"], 0)
+
+
+def test_code_fenced_json_is_parsed(monkeypatch):
+    from autosub.stages import translate
+    monkeypatch.setattr(translate.ollama, "chat", lambda url, model, msgs: '```json\n["a"]\n```')
+    monkeypatch.setattr(translate, "check_fit", lambda cfg, model: None)
+    assert translate.ask({"ollama_url": ""}, "m", ["x"], [], "vi", set()) == ["a"]

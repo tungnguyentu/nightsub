@@ -22,7 +22,9 @@ def ps(url):
 
 def chat(url, model, messages):
     out = _req(url, "/api/chat", {"model": model, "messages": messages, "stream": False, "think": False,
-                                  "options": {"temperature": 0.3, "num_predict": 1024}},  # cap runaway repetition loops
+                                  "options": {"temperature": 0.3, "num_predict": 1024,  # cap runaway repetition loops
+                                              "num_ctx": 2048,  # prompts are <1k tokens; smaller KV cache fits 6 GB
+                                              "num_gpu": 99}},  # all layers on GPU; ollama's estimate is too cautious on 6 GB
                timeout=180)
     # Qwen3-style models may emit a thinking block; drop it.
     return re.sub(r"<think>.*?</think>", "", out["message"]["content"], flags=re.S).strip()

@@ -15,7 +15,7 @@ def setup(monkeypatch, tags=None, free=6000):
 
 
 def test_missing_model_named(monkeypatch):
-    cfg = setup(monkeypatch, tags=["dolphin3:8b"])
+    cfg = setup(monkeypatch, tags=["dolphin3:8b", config.DEFAULTS["models"]["vi"]])
     probs = preflight.check(cfg)
     assert len(probs) == 1 and cfg["models"]["en"] in probs[0]
 
@@ -26,7 +26,7 @@ def test_ollama_unreachable_one_problem(monkeypatch):
 
 
 def test_all_present(monkeypatch):
-    cfg = setup(monkeypatch, tags=[cfg_m for cfg_m in [config.DEFAULTS["models"]["en"], "dolphin3:8b"]])
+    cfg = setup(monkeypatch, tags=[*config.DEFAULTS["models"].values(), config.DEFAULTS["fallback_model"]])
     assert preflight.check(cfg) == []
 
 

@@ -1,5 +1,6 @@
 """Translate stage (U5, KTD6): windowed ollama chat, refusal -> fallback model -> single lines -> marker."""
 import json
+import re
 
 from .. import config, jobs, ollama
 from ..refusal import is_refusal
@@ -36,6 +37,7 @@ def ask(cfg, model, lines, ctx, lang, used, messages=None):
     if model not in used:
         used.add(model)
         check_fit(cfg, model)
+    content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())  # gemma wraps JSON in a code fence
     try:
         return json.loads(content)
     except ValueError:

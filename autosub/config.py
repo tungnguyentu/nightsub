@@ -7,7 +7,7 @@ DEFAULTS = {
     "work_dir": str(Path.home() / ".local/share/autosub"),
     "ollama_url": "http://127.0.0.1:11434",
     # Assumption (KTD6): verify tags/quality with scripts/bench.py.
-    "models": {"en": "huihui_ai/qwen3-abliterated:8b", "vi": "huihui_ai/qwen3-abliterated:8b"},
+    "models": {"en": "huihui_ai/qwen3-abliterated:8b", "vi": "gemma3:4b"},
     "fallback_model": "dolphin3:8b",
     "min_gpu_share": 0.9,  # translate/polish fail if less of the model than this is on GPU (R9)
     "pivot": {},  # e.g. {"vi": "en"} to go JA -> en -> vi; measured worse with qwen3-4b (English leaks through)
