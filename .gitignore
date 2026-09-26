@@ -2,3 +2,4 @@
 __pycache__/
 *.pyc
 autosub.toml
+.context/compound-engineering/
