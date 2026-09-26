@@ -13,7 +13,7 @@ def free_mb():
 
 
 def holders():
-    return [f"{r[1]} (pid {r[0]}, {r[2]} MiB)" for r in _smi("compute-apps=pid,process_name,used_memory") if len(r) == 3]
+    return [f"{r[1].split()[0].rsplit('/', 1)[-1]} (pid {r[0]}, {r[2]} MiB)" for r in _smi("compute-apps=pid,process_name,used_memory") if len(r) == 3]
 
 
 def wait_free(need_mb, timeout_s=30):
