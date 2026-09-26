@@ -12,6 +12,8 @@ def main():
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--allow-remote", action="store_true", help="allow binding a non-loopback host")
+    m = sub.add_parser("mux", help="embed .en/.vi.srt as subtitle tracks -> <video>.subs.mkv")
+    m.add_argument("video")
     a = p.parse_args()
     cfg = config.load()
     if a.cmd == "doctor":
@@ -20,6 +22,10 @@ def main():
             print("-", pr)
         print("OK: ready" if not problems else f"{len(problems)} problem(s)")
         sys.exit(1 if problems else 0)
+    if a.cmd == "mux":
+        from . import mux
+        print(mux.mux(a.video))
+        return
     from . import web
     web.serve(cfg, a.host, a.port, a.allow_remote)
 
