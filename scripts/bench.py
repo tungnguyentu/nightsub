@@ -1,6 +1,6 @@
 """U9 benchmark. Human reads the output; record results in docs/bench.md.
 
-  uv run python scripts/bench.py pipeline /path/video.mp4 [--lang en]
+  uv run python scripts/bench.py pipeline /path/video.mp4 [--lang en,vi]
   uv run python scripts/bench.py models sample.txt [model ...]   # sample.txt: ~30 source lines, one per line
 """
 import argparse
@@ -11,10 +11,10 @@ from autosub import config, jobs, scheduler
 from autosub.stages import translate
 
 
-def pipeline(video, lang):
+def pipeline(video, langs):
     cfg = {**config.load(), "work_dir": tempfile.mkdtemp(prefix="autosub-bench-")}
     db = config.db_path(cfg)
-    i = jobs.add(db, video, lang)
+    ids = [jobs.add(db, video, lang) for lang in langs.split(",")]  # one pass: ASR once, reused via the cache
     times = {}
 
     def timed(name, fn):
@@ -26,12 +26,13 @@ def pipeline(video, lang):
     t0 = time.monotonic()
     scheduler.run_pass(cfg, db, {n: timed(n, f) for n, f in scheduler.RUNNERS.items()})
     total = time.monotonic() - t0
-    j = jobs.get(db, i)
     for n, t in times.items():
         print(f"{n:10} {t / 60:6.1f} min")
-    print(f"{'total':10} {total / 60:6.1f} min for {j['audio_min'] or 0:.0f} min of audio")
-    print(f"stage={j['stage']} error={j['error']} cues={j['cues']} failed_lines={j['failed_lines']} "
-          f"flagged_share={j['flagged_share']}")
+    print(f"{'total':10} {total / 60:6.1f} min for {jobs.get(db, ids[0])['audio_min'] or 0:.0f} min of audio")
+    for i in ids:
+        j = jobs.get(db, i)
+        print(f"[{j['lang']}] stage={j['stage']} error={j['error']} cues={j['cues']} "
+              f"failed_lines={j['failed_lines']} flagged_share={j['flagged_share']}")
     print("work dir:", cfg["work_dir"])
 
 
@@ -55,7 +56,7 @@ if __name__ == "__main__":
     sub = p.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("pipeline")
     a.add_argument("video")
-    a.add_argument("--lang", default="en")
+    a.add_argument("--lang", default="en", help="comma list, e.g. en,vi")
     b = sub.add_parser("models")
     b.add_argument("sample")
     b.add_argument("names", nargs="*")
