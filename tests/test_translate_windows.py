@@ -76,3 +76,22 @@ def test_97_percent_on_gpu_is_accepted(monkeypatch):
     from autosub.stages import translate
     out, failed = translate.translate_texts(CFG, ["あ"], "en", set())
     assert failed == 0
+
+
+def test_vi_goes_through_english(monkeypatch):
+    from autosub.stages import translate
+    seen = []
+
+    def tt(cfg, texts, lang, used, progress=lambda f: None):
+        seen.append((lang, list(texts)))
+        return [f"{lang}:{t}" if t != "bad" else translate.UNTRANSLATED for t in texts], 0
+    monkeypatch.setattr(translate, "translate_texts", tt)
+    out, failed = translate.translate_via_pivot({"pivot": {"vi": "en"}}, ["a", "bad"], "vi", set())
+    assert seen[0] == ("en", ["a", "bad"]) and seen[1][0] == "vi"
+    assert out == ["vi:en:a", translate.UNTRANSLATED] and failed == 1
+
+
+def test_en_has_no_pivot(monkeypatch):
+    from autosub.stages import translate
+    monkeypatch.setattr(translate, "translate_texts", lambda cfg, t, lang, used, progress=None: ([lang] * len(t), 0))
+    assert translate.translate_via_pivot({"pivot": {"vi": "en"}}, ["a"], "en", set()) == (["en"], 0)

@@ -22,3 +22,11 @@ def test_still_kana():
 
 def test_not_a_list():
     assert is_refusal(SRC, None) and is_refusal(SRC, {"a": 1})
+
+
+def test_english_left_in_vietnamese_output_is_refusal():
+    from autosub.refusal import is_refusal
+    assert is_refusal(["x"], ["I love you so much"], "vi")
+    assert not is_refusal(["x"], ["Anh yêu em nhiều lắm"], "vi")
+    assert not is_refusal(["x"], ["Ah ah"], "vi")  # short interjection
+    assert not is_refusal(["x"], ["I love you so much"], "en")

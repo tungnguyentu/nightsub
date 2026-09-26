@@ -14,7 +14,15 @@ def in_source_script(text):
     return bool(letters) and len(CJK.findall(letters)) / len(letters) > 0.3
 
 
-def is_refusal(src_lines, out):
+VI_MARKS = re.compile(r"[ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹáàãéèíìóòõúùý]", re.I)
+
+
+def not_vietnamese(text):
+    """3+ words with no Vietnamese diacritic: the model left it in English (short interjections are fine)."""
+    return len(text.split()) >= 3 and not VI_MARKS.search(text)
+
+
+def is_refusal(src_lines, out, lang=None):
     if not isinstance(out, list) or len(out) != len(src_lines) or not all(isinstance(o, str) for o in out):
         return True
-    return any(PHRASES.search(o) or in_source_script(o) for o in out)
+    return any(PHRASES.search(o) or in_source_script(o) or (lang == "vi" and not_vietnamese(o)) for o in out)

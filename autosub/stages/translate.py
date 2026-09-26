@@ -25,7 +25,7 @@ def prompt(lines, ctx, lang):
 
 def check_fit(cfg, model):
     for m in ollama.ps(cfg["ollama_url"]):
-        if m["name"] in (model, f"{model}:latest") and m.get("size_vram", 0) < cfg.get("min_gpu_share", 0.95) * m.get("size", 0):  # a few % on CPU is fine
+        if m["name"] in (model, f"{model}:latest") and m.get("size_vram", 0) < cfg.get("min_gpu_share", 0.9) * m.get("size", 0):  # a few % on CPU is fine
             raise GpuFitError(f"model did not fit in GPU memory: {model} "
                               f"({m['size_vram'] >> 20}/{m['size'] >> 20} MiB on GPU)")
 
@@ -48,7 +48,7 @@ def with_fallback(cfg, lines, ctx, lang, used, messages=None):
             out = ask(cfg, model, lines, ctx, lang, used, messages)
         except OSError:  # timeout / connection drop: same path as a refusal (R13)
             continue
-        if not is_refusal(lines, out):
+        if not is_refusal(lines, out, lang):
             return out
     return None
 
@@ -70,6 +70,17 @@ def translate_texts(cfg, texts, lang, used, progress=lambda f: None):
     return out, failed
 
 
+def translate_via_pivot(cfg, texts, lang, used, progress=lambda f: None):
+    """Small models translate JA->EN far better than JA->VI, so go through the pivot language when configured."""
+    pivot = cfg.get("pivot", {}).get(lang)
+    if not pivot:
+        return translate_texts(cfg, texts, lang, used, progress)
+    mid, _ = translate_texts(cfg, texts, pivot, used, lambda f: progress(f / 2))
+    out, _ = translate_texts(cfg, mid, lang, used, lambda f: progress(0.5 + f / 2))
+    out = [UNTRANSLATED if m == UNTRANSLATED else o for m, o in zip(mid, out)]
+    return out, out.count(UNTRANSLATED)
+
+
 def unload_all(cfg, used):
     for m in used:
         try:
@@ -84,8 +95,8 @@ def run(cfg, db, batch):
         for job in batch:
             d = config.job_dir(cfg, job["id"])
             segs = json.loads((d / "segments.json").read_text())
-            tr, failed = translate_texts(cfg, [s["text"] for s in segs], job["lang"], used,
-                                         lambda f: jobs.update(db, job["id"], progress=f))
+            tr, failed = translate_via_pivot(cfg, [s["text"] for s in segs], job["lang"], used,
+                                             lambda f: jobs.update(db, job["id"], progress=f))
             for s, t in zip(segs, tr):
                 s["src"], s["text"] = s["text"], t
             (d / "translated.json").write_text(json.dumps(segs, ensure_ascii=False))
