@@ -25,7 +25,7 @@ def prompt(lines, ctx, lang):
 
 def check_fit(cfg, model):
     for m in ollama.ps(cfg["ollama_url"]):
-        if m["name"] in (model, f"{model}:latest") and m.get("size_vram", 0) < m.get("size", 0):
+        if m["name"] in (model, f"{model}:latest") and m.get("size_vram", 0) < cfg.get("min_gpu_share", 0.95) * m.get("size", 0):  # a few % on CPU is fine
             raise GpuFitError(f"model did not fit in GPU memory: {model} "
                               f"({m['size_vram'] >> 20}/{m['size'] >> 20} MiB on GPU)")
 
@@ -44,7 +44,10 @@ def ask(cfg, model, lines, ctx, lang, used, messages=None):
 
 def with_fallback(cfg, lines, ctx, lang, used, messages=None):
     for model in (cfg["models"][lang], cfg["fallback_model"]):
-        out = ask(cfg, model, lines, ctx, lang, used, messages)
+        try:
+            out = ask(cfg, model, lines, ctx, lang, used, messages)
+        except OSError:  # timeout / connection drop: same path as a refusal (R13)
+            continue
         if not is_refusal(lines, out):
             return out
     return None

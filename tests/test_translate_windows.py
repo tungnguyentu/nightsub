@@ -54,3 +54,25 @@ def test_partial_offload_fails_stage(monkeypatch):
     fake(monkeypatch, lambda m, n: ok(n), ps=[{"name": "prim", "size": 5 << 30, "size_vram": 3 << 30}])
     with pytest.raises(tr.GpuFitError, match="did not fit in GPU memory"):
         tr.translate_texts(CFG, ["あ"], "en", set())
+
+
+def test_timeout_falls_back_like_refusal(monkeypatch):
+    from autosub.stages import translate
+    calls = []
+
+    def ask(cfg, model, lines, ctx, lang, used, messages=None):
+        calls.append(model)
+        if model == "primary":
+            raise TimeoutError("timed out")
+        return ["ok"] * len(lines)
+    monkeypatch.setattr(translate, "ask", ask)
+    cfg = {"models": {"en": "primary"}, "fallback_model": "fb"}
+    assert translate.with_fallback(cfg, ["あ"], [], "en", set()) == ["ok"]
+    assert calls == ["primary", "fb"]
+
+
+def test_97_percent_on_gpu_is_accepted(monkeypatch):
+    fake(monkeypatch, lambda m, n: ok(n), ps=[{"name": "prim", "size": 100 << 20, "size_vram": 97 << 20}])
+    from autosub.stages import translate
+    out, failed = translate.translate_texts(CFG, ["あ"], "en", set())
+    assert failed == 0

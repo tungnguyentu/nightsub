@@ -1,4 +1,5 @@
 """Stage-major worker (KTD10): each stage runs once over every job waiting for it."""
+import os
 import subprocess
 import sys
 import threading
@@ -16,8 +17,11 @@ LLM_STAGES = {"translate", "polish"}
 def subprocess_stage(name):
     """GPU stage in its own process so VRAM is returned on exit (KTD2)."""
     def run(cfg, db, batch):
+        env = {**os.environ, "LD_LIBRARY_PATH": _cuda12_libs()}
+        if "work_dir" in cfg:
+            env["AUTOSUB_WORK_DIR"] = cfg["work_dir"]
         p = subprocess.run([sys.executable, "-m", f"autosub.stages.{name}", *[str(j["id"]) for j in batch]],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, env=env)
         if p.returncode != 0:
             last = (p.stderr.strip().splitlines() or [f"exit {p.returncode}"])[-1]
             frm = next(s[1] for s in STAGES if s[0] == name)
@@ -25,6 +29,14 @@ def subprocess_stage(name):
                 if jobs.get(db, j["id"])["stage"] == frm:
                     jobs.fail(db, j["id"], f"{name}: {last}")
     return run
+
+
+def _cuda12_libs():
+    """faster-whisper's ctranslate2 wants CUDA 12 cuBLAS/cuDNN; torch ships CUDA 13, so point at the cu12 wheels."""
+    import glob
+    import site
+    dirs = [d for sp in site.getsitepackages() for lib in ("cublas", "cudnn") for d in glob.glob(f"{sp}/nvidia/{lib}/lib")]
+    return os.pathsep.join(dirs + [os.environ.get("LD_LIBRARY_PATH", "")]).strip(os.pathsep)
 
 
 def inprocess_stage(name):

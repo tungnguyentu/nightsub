@@ -7,7 +7,7 @@ dependencies = ["fastapi", "uvicorn"]
 
 [project.optional-dependencies]
 # Heavy CUDA stack (torch etc.), only needed for real runs: `uv sync --extra gpu`
-gpu = ["faster-whisper", "funasr", "torch", "torchaudio"]
+gpu = ["faster-whisper", "funasr", "torch", "torchaudio", "nvidia-cublas-cu12", "nvidia-cudnn-cu12>=9,<10"]
 
 [dependency-groups]
 dev = ["pytest", "httpx"]

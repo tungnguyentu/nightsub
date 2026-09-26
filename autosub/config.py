@@ -1,4 +1,5 @@
 """Defaults, overridable by ./autosub.toml (same keys, top level)."""
+import os
 import tomllib
 from pathlib import Path
 
@@ -28,6 +29,8 @@ def load(path="autosub.toml"):
     p = Path(path)
     if p.exists():
         cfg.update(tomllib.loads(p.read_text()))
+    if os.environ.get("AUTOSUB_WORK_DIR"):  # set by the scheduler for stage subprocesses
+        cfg["work_dir"] = os.environ["AUTOSUB_WORK_DIR"]
     return cfg
 
 

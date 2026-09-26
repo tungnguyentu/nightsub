@@ -21,8 +21,9 @@ def ps(url):
 
 
 def chat(url, model, messages):
-    out = _req(url, "/api/chat", {"model": model, "messages": messages, "stream": False,
-                                  "options": {"temperature": 0.3}})
+    out = _req(url, "/api/chat", {"model": model, "messages": messages, "stream": False, "think": False,
+                                  "options": {"temperature": 0.3, "num_predict": 1024}},  # cap runaway repetition loops
+               timeout=180)
     # Qwen3-style models may emit a thinking block; drop it.
     return re.sub(r"<think>.*?</think>", "", out["message"]["content"], flags=re.S).strip()
 

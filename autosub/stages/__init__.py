@@ -12,6 +12,8 @@ def cli(load, process, to):
     models = load(cfg)
     for job_id in map(int, sys.argv[1:]):
         job = jobs.get(db, job_id)
+        if job is None:  # wrong db would otherwise "succeed" silently
+            sys.exit(f"job {job_id} not found in {db}")
         try:
             process(cfg, db, job, config.job_dir(cfg, job_id), models)
             jobs.update(db, job_id, stage=to, progress=0)
