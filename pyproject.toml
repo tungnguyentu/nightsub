@@ -1,0 +1,20 @@
+[project]
+name = "autosub"
+version = "0.1.0"
+description = "Local GPU subtitle + translation pipeline"
+requires-python = "==3.12.*"
+dependencies = ["fastapi", "uvicorn"]
+
+[project.optional-dependencies]
+# Heavy CUDA stack (torch etc.), only needed for real runs: `uv sync --extra gpu`
+gpu = ["faster-whisper", "funasr", "torch", "torchaudio"]
+
+[dependency-groups]
+dev = ["pytest", "httpx"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

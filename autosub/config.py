@@ -1,0 +1,42 @@
+"""Defaults, overridable by ./autosub.toml (same keys, top level)."""
+import tomllib
+from pathlib import Path
+
+DEFAULTS = {
+    "work_dir": str(Path.home() / ".local/share/autosub"),
+    "ollama_url": "http://127.0.0.1:11434",
+    # Assumption (KTD6): verify tags/quality with scripts/bench.py.
+    "models": {"en": "huihui_ai/qwen3-abliterated:8b", "vi": "huihui_ai/qwen3-abliterated:8b"},
+    "fallback_model": "dolphin3:8b",
+    "asr_model": "large-v3",
+    "asr_compute_type": "int8_float16",
+    "asr_language": None,  # None = whisper auto-detect per span
+    "vram_needed_mb": 5000,
+    "vram_wait_s": 30,
+    "window": 12,
+    "context_lines": 3,
+    "polish_logprob": -1.0,
+    "polish_ratio": [0.5, 6.0],
+    "max_line": 42,
+    "cps": 17,
+    "min_dur": 0.8,
+}
+
+
+def load(path="autosub.toml"):
+    cfg = dict(DEFAULTS)
+    p = Path(path)
+    if p.exists():
+        cfg.update(tomllib.loads(p.read_text()))
+    return cfg
+
+
+def db_path(cfg):
+    Path(cfg["work_dir"]).mkdir(parents=True, exist_ok=True)
+    return str(Path(cfg["work_dir"]) / "jobs.db")
+
+
+def job_dir(cfg, job_id):
+    d = Path(cfg["work_dir"]) / "jobs" / str(job_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
