@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>autosub</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 2rem; background: #fafafa; color: #222; }
+  form { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  input[type=text] { flex: 1; min-width: 20rem; padding: .4rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid #ddd; vertical-align: top; }
+  .err { color: #b00; }
+  #msg { color: #b00; }
+  @media (prefers-color-scheme: dark) { body { background: #181818; color: #ddd; } th, td { border-color: #333; } }
+</style>
+</head>
+<body>
+<h1>autosub</h1>
+<form id="f">
+  <input type="text" id="paths" placeholder="Paste video file or folder paths (one per line or separated by ;)" required>
+  <select id="lang"><option value="en">English</option><option value="vi">Vietnamese</option></select>
+  <label><input type="checkbox" id="tags"> non-speech tags</label>
+  <button>Add</button>
+</form>
+<p id="msg"></p>
+<table>
+  <thead><tr><th>#</th><th>Video</th><th>Lang</th><th>Stage</th><th>Progress</th><th>ETA</th><th>Result</th><th></th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = s => s == null ? "—" : `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m`;
+const NEXT = {queued: "gate", gated: "asr", transcribed: "translate", translated: "polish", polished: "retime", done: "done"};
+
+$("f").onsubmit = async e => {
+  e.preventDefault();
+  const paths = $("paths").value.split(/[;\n]/).map(s => s.trim()).filter(Boolean);
+  const r = await fetch("/jobs", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({paths, lang: $("lang").value, tags: $("tags").checked})});
+  $("msg").textContent = r.ok ? "" : (await r.json()).detail;
+  if (r.ok) $("paths").value = "";
+  poll();
+};
+
+async function retry(id) { await fetch(`/jobs/${id}/retry`, {method: "POST"}); poll(); }
+
+async function poll() {
+  const jobs = await (await fetch("/jobs")).json();
+  $("rows").innerHTML = jobs.map(j => `<tr>
+    <td>${j.id}</td><td>${esc(j.video.split("/").pop())}</td><td>${j.lang}</td>
+    <td>${j.error ? "failed at " + NEXT[j.stage] : NEXT[j.stage]}</td>
+    <td>${j.stage === "done" ? "100%" : Math.round(j.progress * 100) + "%"}</td>
+    <td>${fmt(j.eta_s)}</td>
+    <td>${j.error ? `<span class="err">${esc(j.error)}</span>`
+        : j.stage === "done" ? `${j.cues} cues, ${j.failed_lines} failed lines, ${Math.round((j.flagged_share || 0) * 100)}% polished` : ""}</td>
+    <td>${j.error ? `<button onclick="retry(${j.id})">retry</button>` : ""}</td></tr>`).join("");
+}
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>
