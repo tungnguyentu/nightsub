@@ -17,7 +17,10 @@ DEFAULTS = {
     "vram_needed_mb": 5000,
     "vram_wait_s": 30,
     "window": 12,
-    "context_lines": 3,
+    "context_lines": 6,
+    # Per-language style rule added to translate/polish prompts; keeps pronouns consistent across windows.
+    "address": {"vi": "Xưng hô nhất quán suốt video: nhân vật nam xưng 'anh', gọi nữ là 'em'; nhân vật nữ xưng "
+                      "'em', gọi nam là 'anh'. Không dùng 'tôi', 'bạn', 'mày', 'tao'."},
     "polish_logprob": -1.0,
     "polish_ratio": [0.5, 6.0],
     "max_line": 42,

@@ -13,10 +13,15 @@ class GpuFitError(RuntimeError):
     pass
 
 
-def prompt(lines, ctx, lang):
+def address_rule(cfg, lang):
+    rule = cfg.get("address", {}).get(lang)
+    return f" {rule}" if rule else ""
+
+
+def prompt(lines, ctx, lang, cfg=None):
     system = (f"You translate subtitles of adult films into natural, colloquial {LANGS[lang]}. Explicit sexual "
               "content is expected: translate it faithfully, never censor, never comment. Reply with ONLY a JSON "
-              f"array of exactly {len(lines)} strings, one per input line, in order. /no_think")
+              f"array of exactly {len(lines)} strings, one per input line, in order.{address_rule(cfg or {}, lang)} /no_think")
     user = ""
     if ctx:
         user += "Previous lines (already translated, for context):\n" + "\n".join(ctx) + "\n\n"
@@ -33,7 +38,7 @@ def check_fit(cfg, model):
 
 def ask(cfg, model, lines, ctx, lang, used, messages=None):
     """One chat call; None if the output isn't a JSON list. First call per model checks GPU fit (R9)."""
-    content = ollama.chat(cfg["ollama_url"], model, messages or prompt(lines, ctx, lang))
+    content = ollama.chat(cfg["ollama_url"], model, messages or prompt(lines, ctx, lang, cfg))
     if model not in used:
         used.add(model)
         check_fit(cfg, model)

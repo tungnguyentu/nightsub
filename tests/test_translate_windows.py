@@ -102,3 +102,14 @@ def test_code_fenced_json_is_parsed(monkeypatch):
     monkeypatch.setattr(translate.ollama, "chat", lambda url, model, msgs: '```json\n["a"]\n```')
     monkeypatch.setattr(translate, "check_fit", lambda cfg, model: None)
     assert translate.ask({"ollama_url": ""}, "m", ["x"], [], "vi", set()) == ["a"]
+
+
+def test_vietnamese_prompts_carry_the_address_rule():
+    from autosub import config
+    from autosub.stages import polish, translate
+    cfg = dict(config.DEFAULTS)
+    rule = cfg["address"]["vi"]
+    assert rule in translate.prompt(["あ"], [], "vi", cfg)[0]["content"]
+    assert rule not in translate.prompt(["あ"], [], "en", cfg)[0]["content"]
+    segs = [{"src": "あ", "text": "a"}]
+    assert rule in polish.rewrite_prompt(segs, 0, "vi", cfg)[0]["content"]
