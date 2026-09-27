@@ -15,11 +15,17 @@ def parse(raw):
     return re.findall(r"<\|(.*?)\|>", raw), re.sub(r"<\|.*?\|>", "", raw).strip()
 
 
+# Sounds *behind* the dialogue: a span tagged with one of these can still hold speech (talking over music).
+BACKGROUND = {"BGM", "Applause"}
+
+
 def classify(raw):
-    """(kind, tag): event-tagged or textless spans are non-speech; everything else is speech."""
+    """(kind, tag): textless spans and vocal events (laughter, breath, crying...) are non-speech;
+    background music/applause with recognisable text is speech, so dialogue over music is not dropped."""
     tags, text = parse(raw)
     event = next((t for t in tags if t in EVENTS), None)
-    if event or not re.sub(r"[\W_]+", "", text):
+    has_text = bool(re.sub(r"[\W_]+", "", text))
+    if not has_text or (event and event not in BACKGROUND):
         return "nonspeech", event
     return "speech", None
 

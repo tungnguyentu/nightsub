@@ -27,7 +27,7 @@ def load(cfg):
 
 def cache_path(cfg, video):
     """Transcript is per video, not per language: a second job on the same file reuses it."""
-    key = hashlib.sha1(f"{Path(video).resolve()}|{cfg['asr_model']}|{cfg['asr_language']}|g1".encode()).hexdigest()[:16]
+    key = hashlib.sha1(f"{Path(video).resolve()}|{cfg['asr_model']}|{cfg['asr_language']}|g1|gate2".encode()).hexdigest()[:16]
     p = Path(cfg["work_dir"]) / "asr-cache"
     p.mkdir(parents=True, exist_ok=True)
     return p / f"{key}.json"
