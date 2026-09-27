@@ -5,7 +5,7 @@ import sqlite3
 SCHEMA = """CREATE TABLE IF NOT EXISTS jobs (
   id INTEGER PRIMARY KEY, video TEXT NOT NULL, lang TEXT NOT NULL, tags INTEGER DEFAULT 0,
   stage TEXT DEFAULT 'queued', progress REAL DEFAULT 0, error TEXT, audio_min REAL,
-  failed_lines INTEGER DEFAULT 0, flagged_share REAL, cues INTEGER, stage_times TEXT DEFAULT '{}',
+  failed_lines INTEGER DEFAULT 0, cloud_fallbacks INTEGER DEFAULT 0, flagged_share REAL, cues INTEGER, stage_times TEXT DEFAULT '{}',
   stage_started_at REAL, control TEXT)"""
 
 
@@ -18,6 +18,8 @@ def _conn(db):
         c.execute("ALTER TABLE jobs ADD COLUMN stage_started_at REAL")
     if "control" not in columns:  # NULL | 'pause' | 'delete' (set by the UI, honoured by running stages)
         c.execute("ALTER TABLE jobs ADD COLUMN control TEXT")
+    if "cloud_fallbacks" not in columns:
+        c.execute("ALTER TABLE jobs ADD COLUMN cloud_fallbacks INTEGER DEFAULT 0")
     return c
 
 

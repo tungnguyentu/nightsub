@@ -4,12 +4,15 @@ Used only for model names starting with PREFIX, e.g. "agy/gemini-3.8-flash-low";
 local ollama. Refusals and timeouts fall back to the local model like any other refusal (R13).
 """
 import json
+import logging
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 PREFIX = "agy/"
+log = logging.getLogger(__name__)
 
 
 def is_agy(model):
@@ -23,12 +26,15 @@ def binary():
 def chat(model, messages, timeout=180):
     prompt = "\n\n".join(m["content"] for m in messages)  # --print takes one message
     with tempfile.TemporaryDirectory() as empty:  # empty workspace, no auto-approved tools: it can only answer
+        started = time.perf_counter()
         try:
             p = subprocess.run([binary() or "agy", "--output-format", "json", "--disable-slash-commands",
                                 "--model", model[len(PREFIX):], f"--print-timeout={timeout}s", f"--print={prompt}"],
                                cwd=empty, capture_output=True, text=True, timeout=timeout + 30)
         except subprocess.TimeoutExpired:  # OSError = the refusal/fallback path in translate
             raise OSError(f"agy timed out after {timeout}s") from None
+        finally:
+            log.info("agy request model=%s elapsed_s=%.3f", model[len(PREFIX):], time.perf_counter() - started)
     if p.returncode != 0:
         raise OSError(f"agy failed: {(p.stderr.strip().splitlines() or ['?'])[-1]}")
     out = json.loads(p.stdout)

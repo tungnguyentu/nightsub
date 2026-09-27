@@ -23,5 +23,7 @@ def test_old_db_migrates_stage_start_column(tmp_path):
         c.execute("INSERT INTO jobs (video, lang) VALUES (?, ?)", ("/old.mp4", "vi"))
     job = jobs.get(db, 1)
     assert job["stage_started_at"] is None
+    assert job["cloud_fallbacks"] == 0
     with sqlite3.connect(db) as c:
-        assert "stage_started_at" in {r[1] for r in c.execute("PRAGMA table_info(jobs)")}
+        columns = {r[1] for r in c.execute("PRAGMA table_info(jobs)")}
+        assert "stage_started_at" in columns and "cloud_fallbacks" in columns

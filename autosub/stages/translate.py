@@ -115,34 +115,41 @@ def ask(cfg, model, lines, ctx, lang, used, messages=None):
         return None
 
 
-def with_fallback(cfg, lines, ctx, lang, used, messages=None):
-    for model in (cfg["models"][lang], cfg["fallback_model"]):
+def with_fallback(cfg, lines, ctx, lang, used, messages=None, fallback_stats=None):
+    for index, model in enumerate((cfg["models"][lang], cfg["fallback_model"])):
         try:
             out = ask(cfg, model, lines, ctx, lang, used, messages)
         except OSError:  # timeout / connection drop: same path as a refusal (R13)
+            if index == 0 and agy.is_agy(model) and fallback_stats is not None:
+                with SERVED_LOCK:
+                    fallback_stats["cloud_fallbacks"] += 1
             continue
         if not is_refusal(lines, out, lang):
             with SERVED_LOCK:
                 SERVED[model] += 1
             return out
+        if index == 0 and agy.is_agy(model) and fallback_stats is not None:
+            with SERVED_LOCK:
+                fallback_stats["cloud_fallbacks"] += 1
     return None
 
 
-def _translate_window(cfg, win, lang, used, *, ctx, previous_sources, following, brief):
+def _translate_window(cfg, win, lang, used, *, ctx, previous_sources, following, brief, fallback_stats=None):
     messages = prompt(win, ctx, lang, cfg, previous_sources=previous_sources, following=following, brief=brief)
-    res = with_fallback(cfg, win, ctx, lang, used, messages)
+    res = with_fallback(cfg, win, ctx, lang, used, messages, fallback_stats)
     if res is not None:
         return res, 0
     out, failed = [], 0
     for line in win:
         single = prompt([line], ctx, lang, cfg, previous_sources=previous_sources, following=following, brief=brief)
-        one = with_fallback(cfg, [line], ctx, lang, used, single)
+        one = with_fallback(cfg, [line], ctx, lang, used, single, fallback_stats)
         out.append(one[0] if one else UNTRANSLATED)
         failed += one is None
     return out, failed
 
 
-def translate_texts(cfg, texts, lang, used, progress=lambda f: None, *, sources=None, brief=None, two_sided=True):
+def translate_texts(cfg, texts, lang, used, progress=lambda f: None, *, sources=None, brief=None,
+                    two_sided=True, fallback_stats=None):
     """-> (translations, failed_line_count). Never drops a line (R13)."""
     sources = list(sources) if sources is not None else list(texts)
     cloud = agy.is_agy(cfg["models"][lang])
@@ -168,7 +175,7 @@ def translate_texts(cfg, texts, lang, used, progress=lambda f: None, *, sources=
             previous = sources[max(0, i - prev_n):i] if two_sided and prev_n else []
             following = sources[i + len(win):i + len(win) + lookahead]
             res, errors = _translate_window(cfg, win, lang, used, ctx=[], previous_sources=previous,
-                                            following=following, brief=brief)
+                                            following=following, brief=brief, fallback_stats=fallback_stats)
             return index, res, errors
 
         pool = ThreadPoolExecutor(max_workers=max(1, int(cfg.get("cloud_parallel", 4))))
@@ -196,7 +203,7 @@ def translate_texts(cfg, texts, lang, used, progress=lambda f: None, *, sources=
             ctx = list(zip(sources[max(0, i - prev_n):i], out[max(0, i - prev_n):i])) if prev_n and two_sided else []
             following = sources[i + len(win):i + len(win) + lookahead]
             res, errors = _translate_window(cfg, win, lang, used, ctx=ctx, previous_sources=[],
-                                            following=following, brief=brief)
+                                            following=following, brief=brief, fallback_stats=fallback_stats)
             out.extend(res)
             failed += errors
             completed_lines += len(win)
@@ -204,13 +211,17 @@ def translate_texts(cfg, texts, lang, used, progress=lambda f: None, *, sources=
     return out, failed
 
 
-def translate_via_pivot(cfg, texts, lang, used, progress=lambda f: None, *, sources=None, brief=None):
+def translate_via_pivot(cfg, texts, lang, used, progress=lambda f: None, *, sources=None, brief=None,
+                        fallback_stats=None):
     """Small models translate JA->EN far better than JA->VI, so go through the pivot language when configured."""
     pivot = cfg.get("pivot", {}).get(lang)
     if not pivot:
-        return translate_texts(cfg, texts, lang, used, progress, sources=sources, brief=brief)
-    mid, _ = translate_texts(cfg, texts, pivot, used, lambda f: progress(f / 2), brief=brief, two_sided=False)
-    out, _ = translate_texts(cfg, mid, lang, used, lambda f: progress(0.5 + f / 2), brief=brief, two_sided=False)
+        return translate_texts(cfg, texts, lang, used, progress, sources=sources, brief=brief,
+                               fallback_stats=fallback_stats)
+    mid, _ = translate_texts(cfg, texts, pivot, used, lambda f: progress(f / 2), brief=brief,
+                             two_sided=False, fallback_stats=fallback_stats)
+    out, _ = translate_texts(cfg, mid, lang, used, lambda f: progress(0.5 + f / 2), brief=brief,
+                             two_sided=False, fallback_stats=fallback_stats)
     out = [UNTRANSLATED if m == UNTRANSLATED else o for m, o in zip(mid, out)]
     return out, out.count(UNTRANSLATED)
 
@@ -233,14 +244,17 @@ def run(cfg, db, batch):
                 d = config.job_dir(cfg, job["id"])
                 segs = json.loads((d / "segments.json").read_text())
                 brief = json.loads((d / "brief.json").read_text()) if (d / "brief.json").exists() else None
+                fallback_stats = {"cloud_fallbacks": 0}
                 tr, failed = translate_via_pivot(cfg, [tagged(s) for s in segs], job["lang"], used,
                                                  lambda f: jobs.progress(db, job["id"], f),
-                                                 sources=[s["text"] for s in segs], brief=brief)
+                                                 sources=[s["text"] for s in segs], brief=brief,
+                                                 fallback_stats=fallback_stats)
                 tr = [TAG.sub("", t) for t in tr]
                 for s, t in zip(segs, tr):
                     s["src"], s["text"] = s["text"], t
                 (d / "translated.json").write_text(json.dumps(segs, ensure_ascii=False))
-                jobs.update(db, job["id"], stage="translated", progress=0, failed_lines=failed)
+                jobs.update(db, job["id"], stage="translated", progress=0, failed_lines=failed,
+                            cloud_fallbacks=fallback_stats["cloud_fallbacks"])
             except jobs.Stopped:  # paused/deleted from the UI: leave the stage to redo later
                 continue
     finally:

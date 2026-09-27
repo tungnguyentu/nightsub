@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import config, jobs, mux, preflight, scheduler
+from . import agy, config, jobs, mux, preflight, scheduler
 
 VIDEO_EXT = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".ts", ".flv"}
 STAGE_NAMES = [s[0] for s in scheduler.STAGES]
@@ -103,7 +103,9 @@ def create_app(cfg, db):
     @app.get("/jobs")
     def status():
         rows = jobs.all(db)
-        return [{**j, "eta_s": eta(j, rows), "steps": steps_for(j)} for j in rows]
+        return [{**j, "cloud_model": cfg["models"].get(j["lang"])
+                 if agy.is_agy(cfg["models"].get(j["lang"], "")) else None,
+                 "eta_s": eta(j, rows), "steps": steps_for(j)} for j in rows]
 
     @app.get("/steps")
     def step_info():
@@ -128,7 +130,9 @@ def create_app(cfg, db):
                  "polished": bool(s.get("polished")),
                  "failed": has_translation and s.get("text") == "[untranslated]"}
                 for s in raw]
-        return {"brief": brief, "rows": rows}
+        model = cfg["models"].get(job["lang"], "")
+        return {"brief": brief, "rows": rows, "cloud_model": model if agy.is_agy(model) else None,
+                "cloud_fallbacks": job.get("cloud_fallbacks", 0)}
 
     @app.post("/jobs/{job_id}/retry")
     def retry(job_id: int):

@@ -70,6 +70,7 @@
   .badge { display: inline-block; border: 1px solid var(--line); border-radius: 99px; padding: .05rem .4rem; margin: .1rem; white-space: nowrap; font-size: .75rem; }
   .badge.polished { color: var(--ok); border-color: var(--ok); }
   .badge.failed { color: var(--bad); border-color: var(--bad); }
+  .cloud-note { display: block; max-width: 14rem; margin-top: .15rem; }
   @media (max-width: 760px) {
     body { padding: .75rem; }
     .step-strip { min-width: 42rem; }
@@ -249,6 +250,9 @@ window.openViewer = async (id, lang) => {
     $("brief").innerHTML = b && !b.skipped
       ? `<b>Tóm tắt bối cảnh</b><p>${esc(b.summary || "Không có mô tả.")}</p>${b.relationship ? `<p><b>Quan hệ:</b> ${esc(b.relationship)}</p>` : ""}${b.setting ? `<p><b>Bối cảnh:</b> ${esc(b.setting)}</p>` : ""}${addressLines(b.vi_address) ? `<p><b>Cách xưng hô:</b> ${esc(addressLines(b.vi_address))}</p>` : ""}`
       : `<b>Không có tóm tắt bối cảnh</b>${b?.skipped ? `<p class="muted">${esc(b.skipped)}</p>` : ""}`;
+    if (data.cloud_model) {
+      $("brief").innerHTML += `<p class="muted" role="status" aria-atomic="true">Cloud fallback: ${Number(data.cloud_fallbacks) || 0} lượt (${esc(data.cloud_model)})</p>`;
+    }
     $("viewerTitle").textContent = `Xem phụ đề · job ${id}`;
     $("translationLabel").textContent = `Bản dịch (${LANG[lang] || lang})`;
     $("lineFilter").checked = false;
@@ -302,7 +306,7 @@ async function poll() {
     return `<tr>
       <td>${j.id}</td>
       <td class="video" title="${esc(j.video)}">${esc(base(j.video))}</td>
-      <td>${esc(LANG[j.lang] || j.lang)}</td>
+      <td>${esc(LANG[j.lang] || j.lang)}${j.cloud_model ? `<small class="muted cloud-note">☁ Dùng ${esc(j.cloud_model)} trên cloud; nội dung được gửi ra ngoài máy</small>` : ""}</td>
       <td class="steps-cell">${renderSteps(activeStep, j.steps, Boolean(j.error))}</td>
       <td>${j.control === "delete" ? `<span class="muted">Đang xóa…</span>`
         : j.control === "pause" ? `<span class="muted">⏸ Đã tạm dừng</span>`
