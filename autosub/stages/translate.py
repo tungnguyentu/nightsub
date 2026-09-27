@@ -26,9 +26,16 @@ def brief_summary(brief):
     return summary[:600] if isinstance(summary, str) else None
 
 
+VI_PRONOUNS = {"anh", "em", "chị", "cô", "chú", "bác", "ông", "bà", "cháu", "con", "tôi", "mình", "cậu", "tớ",
+               "tao", "mày", "thầy", "trò", "sếp", "chồng", "vợ", "bố", "mẹ", "ba", "má"}
+
+
 def address_rule(cfg, lang, brief=None):
     if lang == "vi" and isinstance(brief, dict):
         address = brief.get("vi_address")
+        if isinstance(address, dict):  # keep only real pronouns; a 4B model sometimes answers "Speaker 1"
+            address = {k: v.strip().lower() for k, v in address.items()
+                       if isinstance(v, str) and v.strip().lower() in VI_PRONOUNS}
         if isinstance(address, dict) and any(address.get(k) for k in (
                 "male_self", "male_to_female", "female_self", "female_to_male")):
             fields = (("male_self", "nam tự xưng"), ("male_to_female", "nam gọi nữ"),

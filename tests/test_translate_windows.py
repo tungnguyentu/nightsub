@@ -174,3 +174,15 @@ def test_gender_tag_goes_in_and_is_stripped_out():
     assert translate.tagged({"text": "あ", "gender": None}) == "あ"
     assert translate.TAG.sub("", "[F] Anh ơi") == "Anh ơi"
     assert translate.TAG.sub("", "Anh [M] ơi") == "Anh [M] ơi"  # only a leading tag
+
+
+def test_speaker_labels_in_vi_address_fall_back_to_static_rule():
+    from autosub import config
+    from autosub.stages import translate
+    cfg = dict(config.DEFAULTS)
+    bad = {"vi_address": {"male_self": "Speaker 2", "male_to_female": "Speaker 1",
+                          "female_self": "Speaker 1", "female_to_male": "Speaker 2"}}
+    assert translate.address_rule(cfg, "vi", bad) == f" {cfg['address']['vi']}"
+    good = {"vi_address": {"male_self": "Chú", "male_to_female": "cháu", "female_self": "Speaker 1"}}
+    rule = translate.address_rule(cfg, "vi", good)
+    assert "'chú'" in rule and "'cháu'" in rule and "Speaker" not in rule

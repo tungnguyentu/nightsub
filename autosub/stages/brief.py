@@ -60,7 +60,9 @@ def make_brief(cfg, texts, used):
                    '"age_hint":"..."}],"relationship":"...","setting":"...",'
                    '"vi_address":{"male_self":"...","male_to_female":"...",'
                    '"female_self":"...","female_to_male":"..."}}. '
-                   "Use null for unknown address fields; summary must be concise. Facts:\n" + "\n".join(facts), used)
+                   "Each vi_address value must be ONE Vietnamese pronoun such as anh, em, chị, cô, chú, "
+                   "ông, bà, cháu, tôi, mình, sếp, chồng, vợ, chosen from the characters' relationship and ages; "
+                   "never a speaker label. Use null for unknown address fields; summary must be concise. Facts:\n" + "\n".join(facts), used)
     if merged is None:
         raise ValueError("brief merge refused or unavailable")
     data = json.loads(_content(merged))
