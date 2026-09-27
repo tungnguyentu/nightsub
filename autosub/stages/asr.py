@@ -63,7 +63,7 @@ def process(cfg, db, job, d, model):
                 done[i] = offset_segments(sp["start"], transcribe(model, clip, cfg), clip)
                 f.write(json.dumps({"i": i, "segs": done[i]}, ensure_ascii=False) + "\n")
                 f.flush()
-            jobs.update(db, job["id"], progress=(i + 1) / len(speech))
+            jobs.progress(db, job["id"], (i + 1) / len(speech))
     out = json.dumps([s for i in range(len(speech)) for s in done[i]], ensure_ascii=False)
     (d / "segments.json").write_text(out)
     cache.write_text(out)

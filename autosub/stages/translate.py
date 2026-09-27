@@ -157,16 +157,21 @@ def run(cfg, db, batch):
     used = set()
     try:
         for job in batch:
-            d = config.job_dir(cfg, job["id"])
-            segs = json.loads((d / "segments.json").read_text())
-            brief = json.loads((d / "brief.json").read_text()) if (d / "brief.json").exists() else None
-            tr, failed = translate_via_pivot(cfg, [tagged(s) for s in segs], job["lang"], used,
-                                             lambda f: jobs.update(db, job["id"], progress=f),
-                                             sources=[s["text"] for s in segs], brief=brief)
-            tr = [TAG.sub("", t) for t in tr]
-            for s, t in zip(segs, tr):
-                s["src"], s["text"] = s["text"], t
-            (d / "translated.json").write_text(json.dumps(segs, ensure_ascii=False))
-            jobs.update(db, job["id"], stage="translated", progress=0, failed_lines=failed)
+            if jobs.get(db, job["id"])["control"]:
+                continue
+            try:
+                d = config.job_dir(cfg, job["id"])
+                segs = json.loads((d / "segments.json").read_text())
+                brief = json.loads((d / "brief.json").read_text()) if (d / "brief.json").exists() else None
+                tr, failed = translate_via_pivot(cfg, [tagged(s) for s in segs], job["lang"], used,
+                                                 lambda f: jobs.progress(db, job["id"], f),
+                                                 sources=[s["text"] for s in segs], brief=brief)
+                tr = [TAG.sub("", t) for t in tr]
+                for s, t in zip(segs, tr):
+                    s["src"], s["text"] = s["text"], t
+                (d / "translated.json").write_text(json.dumps(segs, ensure_ascii=False))
+                jobs.update(db, job["id"], stage="translated", progress=0, failed_lines=failed)
+            except jobs.Stopped:  # paused/deleted from the UI: leave the stage to redo later
+                continue
     finally:
         unload_all(cfg, used)  # keep_alive 0 + /api/ps confirm, so the next GPU stage gets the VRAM (KTD2)

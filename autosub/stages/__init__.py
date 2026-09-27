@@ -14,9 +14,13 @@ def cli(load, process, to):
         job = jobs.get(db, job_id)
         if job is None:  # wrong db would otherwise "succeed" silently
             sys.exit(f"job {job_id} not found in {db}")
+        if job["control"]:  # paused/deleted while queued for this batch
+            continue
         try:
             process(cfg, db, job, config.job_dir(cfg, job_id), models)
             jobs.update(db, job_id, stage=to, progress=0)
+        except jobs.Stopped:
+            continue
         except Exception as e:
             traceback.print_exc()
             jobs.fail(db, job_id, f"{type(e).__name__}: {e}")

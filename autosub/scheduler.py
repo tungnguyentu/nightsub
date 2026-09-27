@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 
-from . import gpu, jobs, preflight
+from . import config, gpu, jobs, preflight
 
 # (name, from_stage, to_stage). Stage runners take (cfg, db, batch) and advance/fail jobs themselves.
 STAGES = [("gate", "queued", "gated"), ("asr", "gated", "transcribed"), ("brief", "transcribed", "briefed"),
@@ -65,7 +65,9 @@ RUNNERS = {"gate": subprocess_stage("gate"), "asr": subprocess_stage("asr"),
 
 def run_pass(cfg, db, runners=RUNNERS):
     """One stage-major pass. Returns True if there was work."""
-    active = [j for j in jobs.all(db) if j["error"] is None and j["stage"] != "done"]
+    for i in jobs.purge_deleted(db):
+        config.clear_job_dir(cfg, i)
+    active = [j for j in jobs.all(db) if j["error"] is None and j["stage"] != "done" and not j["control"]]
     if not active:
         return False
     problems = preflight.check(cfg)
@@ -94,6 +96,8 @@ def run_pass(cfg, db, runners=RUNNERS):
                 for j in batch:
                     jobs.fail(db, j["id"], f"{name}: {e}")
             _record_time(db, name, batch, time.monotonic() - t0)
+        for i in jobs.purge_deleted(db):
+            config.clear_job_dir(cfg, i)
     return True
 
 

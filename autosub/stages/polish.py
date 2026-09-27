@@ -38,11 +38,16 @@ def run(cfg, db, batch):
     used = set()
     try:
         for job in batch:
-            d = config.job_dir(cfg, job["id"])
-            segs = json.loads((d / "translated.json").read_text())
-            brief = json.loads((d / "brief.json").read_text()) if (d / "brief.json").exists() else None
-            share = polish(cfg, segs, job["lang"], used, lambda f: jobs.update(db, job["id"], progress=f), brief)
-            (d / "polished.json").write_text(json.dumps(segs, ensure_ascii=False))
-            jobs.update(db, job["id"], stage="polished", progress=0, flagged_share=share)
+            if jobs.get(db, job["id"])["control"]:
+                continue
+            try:
+                d = config.job_dir(cfg, job["id"])
+                segs = json.loads((d / "translated.json").read_text())
+                brief = json.loads((d / "brief.json").read_text()) if (d / "brief.json").exists() else None
+                share = polish(cfg, segs, job["lang"], used, lambda f: jobs.progress(db, job["id"], f), brief)
+                (d / "polished.json").write_text(json.dumps(segs, ensure_ascii=False))
+                jobs.update(db, job["id"], stage="polished", progress=0, flagged_share=share)
+            except jobs.Stopped:  # paused/deleted from the UI: leave the stage to redo later
+                continue
     finally:
         unload_all(cfg, used)

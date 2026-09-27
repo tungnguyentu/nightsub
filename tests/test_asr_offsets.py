@@ -40,6 +40,7 @@ def _job(tmp_path, monkeypatch, n_spans=3):
                                               for i in range(n_spans)]))
     monkeypatch.setattr(asr, "read_wav", lambda p: np.zeros(16000 * 10, np.float32))
     monkeypatch.setattr(asr.jobs, "update", lambda *a, **k: None)
+    monkeypatch.setattr(asr.jobs, "progress", lambda *a, **k: None)
     cfg = {"work_dir": str(tmp_path), "asr_model": "m", "asr_language": None}
     return asr, cfg, d, {"id": 1, "video": str(tmp_path / "v.mp4")}
 

@@ -94,8 +94,11 @@ def create_app(cfg, db):
             raise HTTPException(400, f"unsupported language: {', '.join(bad) or 'none picked'}")
         files = expand(req.paths)
         # one job per (video, language); the scheduler transcribes each video once and reuses it (ASR cache)
-        return {"ids": [jobs.add(db, str(f.resolve()), lang, req.tags, probe_minutes(f))
-                        for f in files for lang in req.langs]}
+        ids = [jobs.add(db, str(f.resolve()), lang, req.tags, probe_minutes(f))
+               for f in files for lang in req.langs]
+        for i in ids:
+            config.clear_job_dir(cfg, i)
+        return {"ids": ids}
 
     @app.get("/jobs")
     def status():
@@ -134,14 +137,35 @@ def create_app(cfg, db):
         jobs.update(db, job_id, error=None)
         return {"ok": True}
 
-    @app.delete("/jobs/{job_id}")
-    def remove(job_id: int):
+    def _job(job_id):
         j = jobs.get(db, job_id)
         if not j:
             raise HTTPException(404, "no such job")
-        if j["error"] is None and j["stage"] != "done":
-            raise HTTPException(409, "job is still running; wait for it to finish or fail")
+        return j
+
+    @app.delete("/jobs/{job_id}")
+    def remove(job_id: int):
+        j = _job(job_id)
+        if j["error"] is None and j["stage"] != "done" and not j["control"]:
+            jobs.update(db, job_id, control="delete")  # running: its stage stops at the next progress tick
+            return {"ok": True, "pending": True}
         jobs.delete(db, job_id)
+        config.clear_job_dir(cfg, job_id)
+        return {"ok": True, "pending": False}
+
+    @app.post("/jobs/{job_id}/pause")
+    def pause(job_id: int):
+        j = _job(job_id)
+        if j["error"] is not None or j["stage"] == "done":
+            raise HTTPException(409, "only a queued or running job can be paused")
+        jobs.update(db, job_id, control="pause")
+        return {"ok": True}
+
+    @app.post("/jobs/{job_id}/resume")
+    def resume(job_id: int):
+        if _job(job_id)["control"] != "pause":
+            raise HTTPException(409, "job is not paused")
+        jobs.update(db, job_id, control=None)
         return {"ok": True}
 
     @app.post("/jobs/{job_id}/mux")

@@ -6,7 +6,7 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS jobs (
   id INTEGER PRIMARY KEY, video TEXT NOT NULL, lang TEXT NOT NULL, tags INTEGER DEFAULT 0,
   stage TEXT DEFAULT 'queued', progress REAL DEFAULT 0, error TEXT, audio_min REAL,
   failed_lines INTEGER DEFAULT 0, flagged_share REAL, cues INTEGER, stage_times TEXT DEFAULT '{}',
-  stage_started_at REAL)"""
+  stage_started_at REAL, control TEXT)"""
 
 
 def _conn(db):
@@ -16,6 +16,8 @@ def _conn(db):
     columns = {r["name"] for r in c.execute("PRAGMA table_info(jobs)")}
     if "stage_started_at" not in columns:
         c.execute("ALTER TABLE jobs ADD COLUMN stage_started_at REAL")
+    if "control" not in columns:  # NULL | 'pause' | 'delete' (set by the UI, honoured by running stages)
+        c.execute("ALTER TABLE jobs ADD COLUMN control TEXT")
     return c
 
 
@@ -44,7 +46,7 @@ def all(db):
 
 def at_stage(db, stage):
     with _conn(db) as c:
-        return [_row(r) for r in c.execute("SELECT * FROM jobs WHERE stage=? AND error IS NULL ORDER BY id", (stage,))]
+        return [_row(r) for r in c.execute("SELECT * FROM jobs WHERE stage=? AND error IS NULL AND control IS NULL ORDER BY id", (stage,))]
 
 
 def update(db, job_id, **fields):
@@ -61,3 +63,23 @@ def fail(db, job_id, reason):
 def delete(db, job_id):
     with _conn(db) as c:
         c.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+
+
+class Stopped(Exception):
+    """Raised inside a stage when the operator paused or deleted the job; not a failure."""
+
+
+def progress(db, job_id, fraction):
+    """Report progress; stop this job's stage if the UI asked to pause or delete it."""
+    update(db, job_id, progress=fraction)
+    j = get(db, job_id)
+    if j is None or j["control"]:
+        raise Stopped(job_id)
+
+
+def purge_deleted(db):
+    """Remove jobs the UI marked for deletion; returns their ids so callers can clear their dirs."""
+    with _conn(db) as c:
+        ids = [r["id"] for r in c.execute("SELECT id FROM jobs WHERE control='delete'")]
+        c.execute("DELETE FROM jobs WHERE control='delete'")
+    return ids

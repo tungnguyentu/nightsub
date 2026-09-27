@@ -42,7 +42,7 @@ def process(cfg, db, job, d, models):
         raw = sv.generate(input=audio[a * SR // 1000:b * SR // 1000], language="auto", use_itn=False)[0]["text"]
         kind, tag = classify(raw)
         spans.append({"start": a / 1000, "end": b / 1000, "kind": kind, "tag": tag})
-        jobs.update(db, job["id"], progress=(i + 1) / len(ranges))
+        jobs.progress(db, job["id"], (i + 1) / len(ranges))
     (d / "spans.json").write_text(json.dumps(spans))
     jobs.update(db, job["id"], audio_min=len(audio) / SR / 60)
 

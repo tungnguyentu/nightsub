@@ -1,5 +1,6 @@
 """Defaults, overridable by ./autosub.toml (same keys, top level)."""
 import os
+import shutil
 import tomllib
 from pathlib import Path
 
@@ -47,6 +48,11 @@ def load(path="autosub.toml"):
 def db_path(cfg):
     Path(cfg["work_dir"]).mkdir(parents=True, exist_ok=True)
     return str(Path(cfg["work_dir"]) / "jobs.db")
+
+
+def clear_job_dir(cfg, job_id):
+    """SQLite reuses ids after a delete, so a new or deleted job must not inherit a previous job's files."""
+    shutil.rmtree(Path(cfg["work_dir"]) / "jobs" / str(job_id), ignore_errors=True)
 
 
 def job_dir(cfg, job_id):

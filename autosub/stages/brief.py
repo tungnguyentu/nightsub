@@ -80,19 +80,24 @@ def run(cfg, db, batch):
     used = set()
     try:
         for job in batch:
-            d = config.job_dir(cfg, job["id"])
-            cache = cache_path(cfg, job["video"])
-            if cache.exists():
-                (d / "brief.json").write_text(cache.read_text())
-            else:
-                try:
-                    segs = json.loads((d / "segments.json").read_text())
-                    brief = make_brief(cfg, [s["text"] for s in segs], used)
-                except Exception as e:
-                    brief = {"skipped": f"{type(e).__name__}: {e}"[:300]}
-                rendered = json.dumps(brief, ensure_ascii=False)
-                (d / "brief.json").write_text(rendered)
-                cache.write_text(rendered)
-            jobs.update(db, job["id"], stage="briefed", progress=0)
+            if jobs.get(db, job["id"])["control"]:
+                continue
+            try:
+                d = config.job_dir(cfg, job["id"])
+                cache = cache_path(cfg, job["video"])
+                if cache.exists():
+                    (d / "brief.json").write_text(cache.read_text())
+                else:
+                    try:
+                        segs = json.loads((d / "segments.json").read_text())
+                        brief = make_brief(cfg, [s["text"] for s in segs], used)
+                    except Exception as e:
+                        brief = {"skipped": f"{type(e).__name__}: {e}"[:300]}
+                    rendered = json.dumps(brief, ensure_ascii=False)
+                    (d / "brief.json").write_text(rendered)
+                    cache.write_text(rendered)
+                jobs.update(db, job["id"], stage="briefed", progress=0)
+            except jobs.Stopped:  # paused/deleted from the UI: leave the stage to redo later
+                continue
     finally:
         unload_all(cfg, used)

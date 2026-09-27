@@ -215,7 +215,11 @@ async function act(path, method, okMsg) {
   poll();
 }
 window.retry = id => act(`/jobs/${id}/retry`, "POST");
-window.remove = id => confirm("Xóa job này khỏi hàng đợi? (File phụ đề đã tạo vẫn giữ nguyên)") && act(`/jobs/${id}`, "DELETE");
+window.remove = (id, running) => confirm(running
+  ? "Job đang chạy. Dừng và xóa job này? (File phụ đề đã tạo vẫn giữ nguyên)"
+  : "Xóa job này khỏi hàng đợi? (File phụ đề đã tạo vẫn giữ nguyên)") && act(`/jobs/${id}`, "DELETE");
+window.pause = id => act(`/jobs/${id}/pause`, "POST");
+window.resume = id => act(`/jobs/${id}/resume`, "POST");
 window.mux = id => { $("msg").textContent = "Đang gắn phụ đề vào video…"; act(`/jobs/${id}/mux`, "POST", r => "Đã tạo: " + r.path); };
 
 function timecode(s) {
@@ -293,18 +297,24 @@ async function poll() {
   $("rows").innerHTML = rows.length ? rows.map(j => {
     const done = j.stage === "done";
     const activeStep = activeStepFor(j.stage);
+    const running = !done && !j.error;
     const result = done ? `${j.cues ?? "?"} dòng${j.failed_lines ? `, <span class="bad">${j.failed_lines} lỗi</span>` : ""}` : "";
     return `<tr>
       <td>${j.id}</td>
       <td class="video" title="${esc(j.video)}">${esc(base(j.video))}</td>
       <td>${esc(LANG[j.lang] || j.lang)}</td>
       <td class="steps-cell">${renderSteps(activeStep, j.steps, Boolean(j.error))}</td>
-      <td>${j.error ? `<span class="bad" title="${esc(j.error)}">Lỗi: ${esc(j.error.slice(0, 80))}</span>` : result || (!done ? `Còn ${fmt(j.eta_s)}` : `<span class="ok">Xong</span>`)}</td>
+      <td>${j.control === "delete" ? `<span class="muted">Đang xóa…</span>`
+        : j.control === "pause" ? `<span class="muted">⏸ Đã tạm dừng</span>`
+        : j.error ? `<span class="bad" title="${esc(j.error)}">Lỗi: ${esc(j.error.slice(0, 80))}</span>`
+        : result || (!done ? (j.eta_s == null ? "" : `Còn ${fmt(j.eta_s)}`) : `<span class="ok">Xong</span>`)}</td>
       <td class="actions">
         ${j.stage !== "queued" ? `<button onclick="openViewer(${j.id}, '${esc(j.lang)}')">Xem phụ đề</button>` : ""}
+        ${running && !j.control ? `<button onclick="pause(${j.id})" title="Dừng sau bước con hiện tại; tiếp tục được">⏸ Tạm dừng</button>` : ""}
+        ${j.control === "pause" ? `<button onclick="resume(${j.id})">▶ Tiếp tục</button>` : ""}
         ${j.error ? `<button onclick="retry(${j.id})">Thử lại</button>` : ""}
         ${done ? `<button onclick="mux(${j.id})" title="Tạo .subs.mkv với tất cả phụ đề đã có">Gắn vào video</button>` : ""}
-        ${done || j.error ? `<button onclick="remove(${j.id})" title="Xóa khỏi hàng đợi">Xóa</button>` : ""}
+        ${j.control !== "delete" ? `<button onclick="remove(${j.id}, ${running})" title="Xóa khỏi hàng đợi">Xóa</button>` : ""}
       </td></tr>`;
   }).join("") : `<tr><td colspan="6" class="muted">Chưa có job nào.</td></tr>`;
 }

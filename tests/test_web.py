@@ -110,13 +110,28 @@ def test_browse_lists_folders_and_videos_only(client, tmp_path):
     assert b["dirs"] == ["sub"] and b["videos"] == ["a.mp4"]
 
 
-def test_cannot_delete_running_job_but_can_delete_done(client, tmp_path):
+def test_deleting_a_running_job_marks_it_and_a_done_job_goes_now(client, tmp_path):
     c, db = client
     (tmp_path / "a.mp4").write_text("x")
     i = c.post("/jobs", json={"paths": [str(tmp_path / "a.mp4")], "langs": ["en"]}).json()["ids"][0]
-    assert c.delete(f"/jobs/{i}").status_code == 409
-    jobs.update(db, i, stage="done")
-    assert c.delete(f"/jobs/{i}").status_code == 200 and c.get("/jobs").json() == []
+    assert c.delete(f"/jobs/{i}").json()["pending"] is True
+    assert jobs.get(db, i)["control"] == "delete"
+    jobs.purge_deleted(db)
+    assert c.get("/jobs").json() == []
+    k = c.post("/jobs", json={"paths": [str(tmp_path / "a.mp4")], "langs": ["en"]}).json()["ids"][0]
+    jobs.update(db, k, stage="done")
+    assert c.delete(f"/jobs/{k}").json()["pending"] is False and c.get("/jobs").json() == []
+
+
+def test_pause_and_resume(client, tmp_path):
+    c, db = client
+    (tmp_path / "a.mp4").write_text("x")
+    i = c.post("/jobs", json={"paths": [str(tmp_path / "a.mp4")], "langs": ["en"]}).json()["ids"][0]
+    assert c.post(f"/jobs/{i}/pause").status_code == 200
+    assert jobs.at_stage(db, "queued") == []  # scheduler skips it
+    assert c.post(f"/jobs/{i}/resume").status_code == 200
+    assert [j["id"] for j in jobs.at_stage(db, "queued")] == [i]
+    assert c.post(f"/jobs/{i}/resume").status_code == 409
 
 
 def test_mux_without_subtitles_is_400(client, tmp_path):
@@ -124,3 +139,27 @@ def test_mux_without_subtitles_is_400(client, tmp_path):
     (tmp_path / "a.mp4").write_text("x")
     i = c.post("/jobs", json={"paths": [str(tmp_path / "a.mp4")], "langs": ["en"]}).json()["ids"][0]
     assert c.post(f"/jobs/{i}/mux").status_code == 400
+
+
+def test_progress_raises_stopped_when_paused(tmp_path):
+    import pytest
+    from autosub import config
+    db = config.db_path({**config.DEFAULTS, "work_dir": str(tmp_path / "w2")})
+    i = jobs.add(db, "/v.mp4", "vi")
+    jobs.progress(db, i, 0.1)
+    jobs.update(db, i, control="pause")
+    with pytest.raises(jobs.Stopped):
+        jobs.progress(db, i, 0.2)
+
+
+def test_new_job_does_not_inherit_a_reused_ids_files(client, tmp_path):
+    c, db = client
+    (tmp_path / "a.mp4").write_text("x")
+    i = c.post("/jobs", json={"paths": [str(tmp_path / "a.mp4")], "langs": ["en"]}).json()["ids"][0]
+    jobs.update(db, i, stage="done")
+    from autosub import config
+    stale = config.job_dir({"work_dir": str(tmp_path / "w")}, i) / "segments.partial.jsonl"
+    stale.write_text("old")
+    c.delete(f"/jobs/{i}")
+    k = c.post("/jobs", json={"paths": [str(tmp_path / "a.mp4")], "langs": ["en"]}).json()["ids"][0]
+    assert k == i and not stale.exists()
