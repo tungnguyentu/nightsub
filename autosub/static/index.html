@@ -1,64 +1,172 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>autosub</title>
+<title>nightsub</title>
 <style>
-  body { font: 14px/1.4 system-ui, sans-serif; margin: 2rem; background: #fafafa; color: #222; }
-  form { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
-  input[type=text] { flex: 1; min-width: 20rem; padding: .4rem; }
+  :root { --bg: #fafafa; --fg: #222; --muted: #777; --line: #ddd; --card: #fff; --acc: #2f6fde; --bad: #c0392b; --ok: #1e8449; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161616; --fg: #ddd; --muted: #999; --line: #333; --card: #1f1f1f; --acc: #6b9bf2; --bad: #e57368; --ok: #58c27d; } }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.45 system-ui, sans-serif; margin: 0; padding: 1.5rem; background: var(--bg); color: var(--fg); }
+  main { max-width: 1100px; margin: auto; }
+  h1 { margin: 0 0 1rem; font-size: 1.4rem; }
+  h2 { font-size: 1rem; margin: 0 0 .6rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+  .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+  button { font: inherit; padding: .35rem .8rem; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=text] { font: inherit; flex: 1; min-width: 16rem; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  .muted { color: var(--muted); }
+  .bad { color: var(--bad); }
+  .ok { color: var(--ok); }
+  #browser { max-height: 16rem; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin: .6rem 0; }
+  #browser div { padding: .25rem .6rem; cursor: pointer; border-bottom: 1px solid var(--line); }
+  #browser div:hover { background: var(--bg); }
+  .chips span { display: inline-flex; gap: .3rem; align-items: center; border: 1px solid var(--line); border-radius: 99px; padding: .1rem .5rem; margin: .15rem; }
+  .chips button { border: 0; padding: 0 .2rem; background: none; }
   table { border-collapse: collapse; width: 100%; }
-  th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid #ddd; vertical-align: top; }
-  .err { color: #b00; }
-  #msg { color: #b00; }
-  @media (prefers-color-scheme: dark) { body { background: #181818; color: #ddd; } th, td { border-color: #333; } }
+  th, td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-weight: 600; color: var(--muted); }
+  .bar { width: 8rem; height: .5rem; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--acc); }
+  td.video { max-width: 22rem; overflow-wrap: anywhere; }
+  .actions { display: flex; gap: .3rem; flex-wrap: wrap; }
 </style>
 </head>
 <body>
-<h1>autosub</h1>
-<form id="f">
-  <input type="text" id="paths" placeholder="Paste video file or folder paths (one per line or separated by ;)" required>
-  <select id="lang"><option value="en">English</option><option value="vi">Vietnamese</option></select>
-  <label><input type="checkbox" id="tags"> non-speech tags</label>
-  <button>Add</button>
-</form>
-<p id="msg"></p>
-<table>
-  <thead><tr><th>#</th><th>Video</th><th>Lang</th><th>Stage</th><th>Progress</th><th>ETA</th><th>Result</th><th></th></tr></thead>
-  <tbody id="rows"></tbody>
-</table>
+<main>
+<h1>nightsub</h1>
+
+<div class="card" id="doctor"><span class="muted">Đang kiểm tra hệ thống…</span></div>
+
+<div class="card">
+  <h2>Thêm video</h2>
+  <div class="row">
+    <button id="up" title="Thư mục cha">↑</button>
+    <input type="text" id="dir" aria-label="Thư mục">
+    <button id="go">Mở</button>
+    <button id="addDir">Chọn cả thư mục này</button>
+  </div>
+  <div id="browser"></div>
+  <div class="chips" id="picked"><span class="muted">Chưa chọn video nào. Bấm vào video ở trên để chọn.</span></div>
+  <div class="row" style="margin-top:.6rem">
+    <label><input type="checkbox" name="lang" value="en" checked> Tiếng Anh</label>
+    <label><input type="checkbox" name="lang" value="vi" checked> Tiếng Việt</label>
+    <label title="Hiện [rên], [nhạc]… ở các đoạn không có lời thoại"><input type="checkbox" id="tags"> Ghi chú âm thanh</label>
+    <button class="primary" id="add" disabled>Bắt đầu</button>
+    <span id="msg"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Hàng đợi</h2>
+  <table>
+    <thead><tr><th>#</th><th>Video</th><th>Ngôn ngữ</th><th>Giai đoạn</th><th>Tiến độ</th><th>Còn lại</th><th>Kết quả</th><th></th></tr></thead>
+    <tbody id="rows"><tr><td colspan="8" class="muted">Chưa có job nào.</td></tr></tbody>
+  </table>
+</div>
+</main>
+
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const fmt = s => s == null ? "—" : `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m`;
-const NEXT = {queued: "gate", gated: "asr", transcribed: "translate", translated: "polish", polished: "retime", done: "done"};
+const base = p => p.split("/").pop();
+const fmt = s => s == null ? "—" : s < 60 ? "<1 phút" : `${Math.floor(s / 3600) ? Math.floor(s / 3600) + " giờ " : ""}${Math.floor(s / 60) % 60} phút`;
+const LANG = {en: "Anh", vi: "Việt"};
+// stage stored = last finished stage; show the one running next
+const RUNNING = {queued: "Lọc âm thanh", gated: "Nhận giọng nói", transcribed: "Dịch", translated: "Chỉnh câu", polished: "Căn thời gian", done: "Xong"};
+const picked = new Set();
 
-$("f").onsubmit = async e => {
-  e.preventDefault();
-  const paths = $("paths").value.split(/[;\n]/).map(s => s.trim()).filter(Boolean);
-  const r = await fetch("/jobs", {method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({paths, lang: $("lang").value, tags: $("tags").checked})});
-  $("msg").textContent = r.ok ? "" : (await r.json()).detail;
-  if (r.ok) $("paths").value = "";
-  poll();
+async function api(path, opts = {}) {
+  const r = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opts});
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+
+async function doctor() {
+  try {
+    const {problems} = await api("/doctor");
+    $("doctor").innerHTML = problems.length
+      ? `<b class="bad">Chưa sẵn sàng:</b><ul>${problems.map(p => `<li>${esc(p)}</li>`).join("")}</ul>`
+      : `<span class="ok">✓ Hệ thống sẵn sàng (GPU, ffmpeg, ollama, model)</span>`;
+  } catch (e) { $("doctor").innerHTML = `<span class="bad">Không kiểm tra được: ${esc(e.message)}</span>`; }
+}
+
+let cur = null;
+async function browse(dir) {
+  try {
+    const b = await api(`/browse${dir ? "?dir=" + encodeURIComponent(dir) : ""}`);
+    cur = b; $("dir").value = b.dir;
+    $("browser").innerHTML = [
+      ...b.dirs.map(d => `<div data-dir="${esc(d)}">📁 ${esc(d)}</div>`),
+      ...b.videos.map(v => `<div data-video="${esc(v)}">${picked.has(b.dir + "/" + v) ? "☑" : "☐"} 🎬 ${esc(v)}</div>`),
+    ].join("") || `<div class="muted">Thư mục trống</div>`;
+  } catch (e) { $("msg").innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+}
+$("browser").onclick = e => {
+  const el = e.target.closest("div"); if (!el) return;
+  if (el.dataset.dir) return browse(cur.dir + "/" + el.dataset.dir);
+  if (el.dataset.video) { const p = cur.dir + "/" + el.dataset.video; picked.has(p) ? picked.delete(p) : picked.add(p); renderPicked(); browse(cur.dir); }
+};
+$("up").onclick = () => browse(cur.parent);
+$("go").onclick = () => browse($("dir").value);
+$("dir").onkeydown = e => { if (e.key === "Enter") browse($("dir").value); };
+$("addDir").onclick = () => { picked.add(cur.dir); renderPicked(); };
+
+function renderPicked() {
+  $("picked").innerHTML = picked.size
+    ? [...picked].map(p => `<span>${esc(base(p) || p)}<button data-p="${esc(p)}" title="Bỏ chọn">✕</button></span>`).join("")
+    : `<span class="muted">Chưa chọn video nào. Bấm vào video ở trên để chọn.</span>`;
+  $("add").disabled = !picked.size;
+}
+$("picked").onclick = e => { const p = e.target.dataset.p; if (p) { picked.delete(p); renderPicked(); browse(cur.dir); } };
+
+$("add").onclick = async () => {
+  const langs = [...document.querySelectorAll("input[name=lang]:checked")].map(i => i.value);
+  try {
+    const {ids} = await api("/jobs", {method: "POST", body: JSON.stringify({paths: [...picked], langs, tags: $("tags").checked})});
+    $("msg").innerHTML = `<span class="ok">Đã thêm ${ids.length} job.</span>`;
+    picked.clear(); renderPicked(); browse(cur.dir); poll();
+  } catch (e) { $("msg").innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
 };
 
-async function retry(id) { await fetch(`/jobs/${id}/retry`, {method: "POST"}); poll(); }
+async function act(path, method, okMsg) {
+  try { const r = await api(path, {method}); if (okMsg) $("msg").innerHTML = `<span class="ok">${esc(okMsg(r))}</span>`; }
+  catch (e) { $("msg").innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+  poll();
+}
+window.retry = id => act(`/jobs/${id}/retry`, "POST");
+window.remove = id => confirm("Xóa job này khỏi hàng đợi? (File phụ đề đã tạo vẫn giữ nguyên)") && act(`/jobs/${id}`, "DELETE");
+window.mux = id => { $("msg").textContent = "Đang gắn phụ đề vào video…"; act(`/jobs/${id}/mux`, "POST", r => "Đã tạo: " + r.path); };
 
 async function poll() {
-  const jobs = await (await fetch("/jobs")).json();
-  $("rows").innerHTML = jobs.map(j => `<tr>
-    <td>${j.id}</td><td>${esc(j.video.split("/").pop())}</td><td>${j.lang}</td>
-    <td>${j.error ? "failed at " + NEXT[j.stage] : NEXT[j.stage]}</td>
-    <td>${j.stage === "done" ? "100%" : Math.round(j.progress * 100) + "%"}</td>
-    <td>${fmt(j.eta_s)}</td>
-    <td>${j.error ? `<span class="err">${esc(j.error)}</span>`
-        : j.stage === "done" ? `${j.cues} cues, ${j.failed_lines} failed lines, ${Math.round((j.flagged_share || 0) * 100)}% polished` : ""}</td>
-    <td>${j.error ? `<button onclick="retry(${j.id})">retry</button>` : ""}</td></tr>`).join("");
+  let rows;
+  try { rows = await api("/jobs"); } catch { return; }
+  $("rows").innerHTML = rows.length ? rows.map(j => {
+    const done = j.stage === "done", pct = done ? 100 : Math.round((j.progress || 0) * 100);
+    const status = j.error ? `<span class="bad" title="${esc(j.error)}">Lỗi: ${esc(j.error.slice(0, 80))}</span>`
+      : done ? `<span class="ok">Xong</span>` : esc(RUNNING[j.stage]);
+    const result = done ? `${j.cues ?? "?"} dòng${j.failed_lines ? `, <span class="bad">${j.failed_lines} lỗi</span>` : ""}` : "";
+    return `<tr>
+      <td>${j.id}</td>
+      <td class="video" title="${esc(j.video)}">${esc(base(j.video))}</td>
+      <td>${esc(LANG[j.lang] || j.lang)}</td>
+      <td>${status}</td>
+      <td>${j.error ? "" : `<div class="bar"><i style="width:${pct}%"></i></div>`}</td>
+      <td>${done || j.error ? "" : fmt(j.eta_s)}</td>
+      <td>${result}</td>
+      <td class="actions">
+        ${j.error ? `<button onclick="retry(${j.id})">Thử lại</button>` : ""}
+        ${done ? `<button onclick="mux(${j.id})" title="Tạo .subs.mkv với tất cả phụ đề đã có">Gắn vào video</button>` : ""}
+        ${done || j.error ? `<button onclick="remove(${j.id})" title="Xóa khỏi hàng đợi">Xóa</button>` : ""}
+      </td></tr>`;
+  }).join("") : `<tr><td colspan="8" class="muted">Chưa có job nào.</td></tr>`;
 }
-poll();
-setInterval(poll, 2000);
+
+doctor(); browse(); poll(); setInterval(poll, 2000);
 </script>
 </body>
 </html>

@@ -52,3 +52,8 @@ def update(db, job_id, **fields):
 
 def fail(db, job_id, reason):
     update(db, job_id, error=str(reason)[:500])
+
+
+def delete(db, job_id):
+    with _conn(db) as c:
+        c.execute("DELETE FROM jobs WHERE id=?", (job_id,))

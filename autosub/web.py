@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import config, jobs, scheduler
+from . import config, jobs, mux, preflight, scheduler
 
 VIDEO_EXT = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".m4v", ".ts", ".flv"}
 STAGE_NAMES = [s[0] for s in scheduler.STAGES]
@@ -15,7 +15,7 @@ STAGE_FROM = {s[1]: i for i, s in enumerate(scheduler.STAGES)}
 
 class NewJobs(BaseModel):
     paths: list[str]
-    lang: str
+    langs: list[str]
     tags: bool = False
 
 
@@ -64,10 +64,13 @@ def create_app(cfg, db):
 
     @app.post("/jobs")
     def add(req: NewJobs):
-        if req.lang not in cfg["models"]:
-            raise HTTPException(400, f"unsupported language: {req.lang}")
+        bad = [l for l in req.langs if l not in cfg["models"]]
+        if bad or not req.langs:
+            raise HTTPException(400, f"unsupported language: {', '.join(bad) or 'none picked'}")
         files = expand(req.paths)
-        return {"ids": [jobs.add(db, str(f.resolve()), req.lang, req.tags, probe_minutes(f)) for f in files]}
+        # one job per (video, language); the scheduler transcribes each video once and reuses it (ASR cache)
+        return {"ids": [jobs.add(db, str(f.resolve()), lang, req.tags, probe_minutes(f))
+                        for f in files for lang in req.langs]}
 
     @app.get("/jobs")
     def status():
@@ -80,6 +83,40 @@ def create_app(cfg, db):
             raise HTTPException(404, "no such job")
         jobs.update(db, job_id, error=None)
         return {"ok": True}
+
+    @app.delete("/jobs/{job_id}")
+    def remove(job_id: int):
+        j = jobs.get(db, job_id)
+        if not j:
+            raise HTTPException(404, "no such job")
+        if j["error"] is None and j["stage"] != "done":
+            raise HTTPException(409, "job is still running; wait for it to finish or fail")
+        jobs.delete(db, job_id)
+        return {"ok": True}
+
+    @app.post("/jobs/{job_id}/mux")
+    def mux_job(job_id: int):
+        j = jobs.get(db, job_id)
+        if not j:
+            raise HTTPException(404, "no such job")
+        try:
+            return {"path": str(mux.mux(j["video"]))}
+        except FileNotFoundError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/browse")
+    def browse(dir: str = str(Path.home())):
+        d = Path(dir).expanduser()
+        if not d.is_dir():
+            raise HTTPException(400, f"not a folder: {d}")
+        items = [p for p in sorted(d.iterdir(), key=lambda p: p.name.lower()) if not p.name.startswith(".")]
+        return {"dir": str(d.resolve()), "parent": str(d.resolve().parent),
+                "dirs": [p.name for p in items if p.is_dir()],
+                "videos": [p.name for p in items if p.is_file() and p.suffix.lower() in VIDEO_EXT]}
+
+    @app.get("/doctor")
+    def doctor():
+        return {"problems": preflight.check(cfg)}
 
     return app
 
