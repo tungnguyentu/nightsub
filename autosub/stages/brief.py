@@ -34,7 +34,7 @@ def _chat(cfg, prompt, used):
             out = ollama.chat(cfg["ollama_url"], model, [
                 {"role": "system", "content": "Summarize the Japanese dialogue faithfully. Do not invent facts. /no_think"},
                 {"role": "user", "content": prompt},
-            ])
+            ], cfg)
         except OSError:
             continue
         used.add(model)

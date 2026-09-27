@@ -49,6 +49,42 @@ def test_eta_needs_history():
     assert web.eta(job, [job, past]) == 20
 
 
+def test_steps_api_and_job_state(client):
+    c, db = client
+    step_info = c.get("/steps").json()
+    assert [s["name"] for s in step_info] == ["gate", "asr", "brief", "translate", "polish", "retime"]
+    i = jobs.add(db, "/v/a.mp4", "vi")
+    jobs.update(db, i, stage="gated", stage_times={"gate": 2.2}, progress=0.25)
+    steps = c.get("/jobs").json()[0]["steps"]
+    assert [s["state"] for s in steps[:3]] == ["done", "running", "pending"]
+    assert steps[0]["secs"] == 2 and steps[1]["progress"] == 0.25
+
+
+def test_lines_endpoint_reads_segments_artifact_and_skipped_brief(client):
+    c, db = client
+    i = jobs.add(db, "/v/a.mp4", "vi")
+    assert c.get(f"/jobs/{i}/lines").status_code == 404
+    d = config.job_dir({**config.DEFAULTS, "work_dir": str(db).rsplit("/", 1)[0]}, i)
+    (d / "segments.json").write_text('[{"start":1.0,"end":2.0,"gender":"F","text":"日本語"}]')
+    (d / "brief.json").write_text('{"skipped":"model error"}')
+    data = c.get(f"/jobs/{i}/lines").json()
+    assert data["brief"]["skipped"] == "model error"
+    assert data["rows"] == [{"start":1.0,"end":2.0,"gender":"F","src":"日本語",
+                              "text":None,"polished":False,"failed":False}]
+
+
+def test_lines_endpoint_prefers_polished_artifact_and_marks_failed(client):
+    c, db = client
+    i = jobs.add(db, "/v/a.mp4", "vi")
+    d = config.job_dir({**config.DEFAULTS, "work_dir": str(db).rsplit("/", 1)[0]}, i)
+    (d / "translated.json").write_text('[{"src":"源","text":"[untranslated]"}]')
+    data = c.get(f"/jobs/{i}/lines").json()
+    assert data["rows"][0]["src"] == "源" and data["rows"][0]["failed"]
+    (d / "polished.json").write_text('[{"src":"源","text":"Đã dịch","polished":true}]')
+    row = c.get(f"/jobs/{i}/lines").json()["rows"][0]
+    assert row["text"] == "Đã dịch" and row["polished"] and not row["failed"]
+
+
 def test_two_languages_make_two_jobs_per_video(client, tmp_path):
     c, _ = client
     (tmp_path / "a.mp4").write_text("x")

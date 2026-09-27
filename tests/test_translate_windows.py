@@ -12,7 +12,7 @@ def fake(monkeypatch, reply, ps=()):
     """reply(model, n_lines) -> raw content string."""
     calls = []
 
-    def chat(url, model, messages):
+    def chat(url, model, messages, cfg=None):
         window = messages[1]["content"].split("Translate:\n")[1].split("\n\nFollowing lines", 1)[0]
         n = window.count("\n") + 1
         calls.append(model)
@@ -100,7 +100,7 @@ def test_en_has_no_pivot(monkeypatch):
 
 def test_code_fenced_json_is_parsed(monkeypatch):
     from autosub.stages import translate
-    monkeypatch.setattr(translate.ollama, "chat", lambda url, model, msgs: '```json\n["a"]\n```')
+    monkeypatch.setattr(translate.ollama, "chat", lambda url, model, msgs, cfg=None: '```json\n["a"]\n```')
     monkeypatch.setattr(translate, "check_fit", lambda cfg, model: None)
     assert translate.ask({"ollama_url": ""}, "m", ["x"], [], "vi", set()) == ["a"]
 
@@ -121,7 +121,7 @@ def test_brief_address_and_two_sided_context_order(monkeypatch):
     brief = {"summary": "Hai người là đồng nghiệp.", "vi_address": {"male_self": "tôi", "male_to_female": "chị"}}
     messages_seen = []
     monkeypatch.setattr(tr.ollama, "ps", lambda url: [])
-    def chat(url, model, messages):
+    def chat(url, model, messages, cfg=None):
         messages_seen.append(messages)
         n = messages[1]["content"].split("Translate:\n")[1].split("\n\nFollowing lines", 1)[0].count("\n") + 1
         return ok(n)
@@ -155,6 +155,17 @@ def test_window_response_count_excludes_following_context(monkeypatch):
     fake(monkeypatch, lambda model, n: ok(n))
     out, failed = tr.translate_texts(cfg, ["a", "b", "c", "d"], "en", set(), sources=["JA"] * 4)
     assert len(out) == 4 and failed == 0
+
+
+def test_chat_uses_configured_context(monkeypatch):
+    from autosub import ollama
+    seen = {}
+    def request(url, path, body, timeout):
+        seen.update(body)
+        return {"message": {"content": "ok"}}
+    monkeypatch.setattr(ollama, "_req", request)
+    ollama.chat("http://local", "model", [], {"llm_ctx": 3072})
+    assert seen["options"]["num_ctx"] == 3072
 
 
 def test_gender_tag_goes_in_and_is_stripped_out():

@@ -1,5 +1,7 @@
 """Local web UI (U8, KTD9): FastAPI on 127.0.0.1, one static page polling GET /jobs."""
+import json
 import subprocess
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -55,6 +57,29 @@ def eta(job, all_jobs):
     return round(total * job["audio_min"])
 
 
+def steps_for(job, now=None):
+    """Build ordered step state from the persisted last-completed stage."""
+    now = time.time() if now is None else now
+    current = next((i for i, (_, frm, _) in enumerate(scheduler.STAGES) if frm == job["stage"]),
+                   len(scheduler.STAGES) if job["stage"] == "done" else 0)
+    result = []
+    for i, (name, _, _) in enumerate(scheduler.STAGES):
+        if i < current:
+            state = "done"
+        elif i == current:
+            state = "failed" if job["error"] else "running"
+        else:
+            state = "pending"
+        secs = job["stage_times"].get(name) if state == "done" else None
+        if state == "running" and job.get("stage_started_at") is not None:
+            secs = max(0, round(now - job["stage_started_at"]))
+        row = {"name": name, "state": state, "secs": round(secs) if secs is not None else None}
+        if state == "running":
+            row["progress"] = job["progress"]
+        result.append(row)
+    return result
+
+
 def create_app(cfg, db):
     app = FastAPI()
 
@@ -75,7 +100,32 @@ def create_app(cfg, db):
     @app.get("/jobs")
     def status():
         rows = jobs.all(db)
-        return [{**j, "eta_s": eta(j, rows)} for j in rows]
+        return [{**j, "eta_s": eta(j, rows), "steps": steps_for(j)} for j in rows]
+
+    @app.get("/steps")
+    def step_info():
+        return scheduler.STEP_INFO
+
+    @app.get("/jobs/{job_id}/lines")
+    def lines(job_id: int):
+        job = jobs.get(db, job_id)
+        if not job:
+            raise HTTPException(404, "no such job")
+        d = config.job_dir(cfg, job_id)
+        artifact = next((d / name for name in ("polished.json", "translated.json", "segments.json")
+                         if (d / name).exists()), None)
+        if artifact is None:
+            raise HTTPException(404, "subtitle lines are not available until ASR finishes")
+        raw = json.loads(artifact.read_text())
+        has_translation = artifact.name != "segments.json"
+        brief_path = d / "brief.json"
+        brief = json.loads(brief_path.read_text()) if brief_path.exists() else None
+        rows = [{"start": s.get("start"), "end": s.get("end"), "gender": s.get("gender"),
+                 "src": s.get("src", s.get("text")), "text": s.get("text") if has_translation else None,
+                 "polished": bool(s.get("polished")),
+                 "failed": has_translation and s.get("text") == "[untranslated]"}
+                for s in raw]
+        return {"brief": brief, "rows": rows}
 
     @app.post("/jobs/{job_id}/retry")
     def retry(job_id: int):

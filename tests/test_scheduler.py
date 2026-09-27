@@ -1,6 +1,6 @@
 import types
 
-from autosub import jobs, scheduler
+from autosub import jobs, scheduler, web
 
 
 CFG = {"vram_needed_mb": 5000, "vram_wait_s": 0}
@@ -48,6 +48,32 @@ def test_old_translated_job_is_not_rebriefed(tmp_path, monkeypatch):
     calls = []
     scheduler.run_pass(CFG, db, recorder(calls))
     assert [c[0] for c in calls] == ["polish", "retime"]
+
+
+def test_stage_started_at_is_set_while_runner_executes_and_cleared_after(tmp_path, monkeypatch):
+    db, ids = make(tmp_path, monkeypatch, ["gated"])
+    monkeypatch.setattr(scheduler.time, "time", lambda: 1234.0)
+    seen = []
+    runners = recorder([])
+    run_asr = runners["asr"]
+    def asr_runner(cfg, db, batch):
+        seen.append(jobs.get(db, batch[0]["id"])["stage_started_at"])
+        run_asr(cfg, db, batch)
+    runners["asr"] = asr_runner
+    scheduler.run_pass(CFG, db, runners)
+    assert seen == [1234.0]
+    assert jobs.get(db, ids[0])["stage_started_at"] is None
+
+
+def test_step_states_for_running_and_failed_brief():
+    base = {"stage": "gated", "error": None, "progress": 0.4, "stage_times": {"gate": 3.8},
+            "stage_started_at": 100.0}
+    steps = web.steps_for(base, now=109.0)
+    assert steps[0] == {"name": "gate", "state": "done", "secs": 4}
+    assert steps[1] == {"name": "asr", "state": "running", "secs": 9, "progress": 0.4}
+    assert all(s["state"] == "pending" for s in steps[2:])
+    failed = web.steps_for({**base, "stage": "transcribed", "error": "bad brief", "stage_started_at": None})
+    assert [s["state"] for s in failed[:4]] == ["done", "done", "failed", "pending"]
 
 
 def test_gpu_busy_fails_job(tmp_path, monkeypatch):

@@ -11,6 +11,14 @@ from . import gpu, jobs, preflight
 STAGES = [("gate", "queued", "gated"), ("asr", "gated", "transcribed"), ("brief", "transcribed", "briefed"),
           ("translate", "briefed", "translated"),
           ("polish", "translated", "polished"), ("retime", "polished", "done")]
+STEP_INFO = [
+    {"name": "gate", "label_vi": "Lọc âm thanh", "help_vi": "Tách lời thoại khỏi đoạn không lời."},
+    {"name": "asr", "label_vi": "Nhận giọng nói", "help_vi": "Chuyển lời thoại tiếng Nhật thành văn bản."},
+    {"name": "brief", "label_vi": "Tóm tắt bối cảnh", "help_vi": "Tóm tắt nhân vật, quan hệ và cách xưng hô."},
+    {"name": "translate", "label_vi": "Dịch", "help_vi": "Dịch phụ đề theo bối cảnh và hội thoại lân cận."},
+    {"name": "polish", "label_vi": "Chỉnh câu", "help_vi": "Rà soát câu dịch để tự nhiên, đúng nghĩa."},
+    {"name": "retime", "label_vi": "Căn thời gian", "help_vi": "Điều chỉnh thời lượng và tốc độ đọc."},
+]
 
 LLM_STAGES = {"brief", "translate", "polish"}
 
@@ -73,6 +81,9 @@ def run_pass(cfg, db, runners=RUNNERS):
                 for j in batch:
                     jobs.fail(db, j["id"], reason)
                 continue
+        started_at = time.time()
+        for j in batch:
+            jobs.update(db, j["id"], stage_started_at=started_at)
         t0 = time.monotonic()
         try:
             runners[name](cfg, db, batch)
@@ -89,7 +100,10 @@ def _record_time(db, name, batch, elapsed):
     total = sum(j["audio_min"] or 0 for j in fresh)
     for j in fresh:
         if j["error"] is None and total:
-            jobs.update(db, j["id"], stage_times={**j["stage_times"], name: elapsed * (j["audio_min"] or 0) / total})
+            jobs.update(db, j["id"], stage_times={**j["stage_times"], name: elapsed * (j["audio_min"] or 0) / total},
+                        stage_started_at=None)
+        else:
+            jobs.update(db, j["id"], stage_started_at=None)
 
 
 def start_worker(cfg, db):

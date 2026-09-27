@@ -66,7 +66,7 @@ def check_fit(cfg, model):
 
 def ask(cfg, model, lines, ctx, lang, used, messages=None):
     """One chat call; None if the output isn't a JSON list. First call per model checks GPU fit (R9)."""
-    content = ollama.chat(cfg["ollama_url"], model, messages or prompt(lines, ctx, lang, cfg))
+    content = ollama.chat(cfg["ollama_url"], model, messages or prompt(lines, ctx, lang, cfg), cfg)
     if model not in used:
         used.add(model)
         check_fit(cfg, model)

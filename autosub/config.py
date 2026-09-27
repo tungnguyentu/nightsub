@@ -20,6 +20,7 @@ DEFAULTS = {
     "window": 12,
     "context_lines": 6,
     "lookahead_lines": 4,
+    "llm_ctx": 4096,  # target RTX 3050: verify size_vram == size through Ollama /api/ps
     # Per-language style rule added to translate/polish prompts; keeps pronouns consistent across windows.
     "address": {"vi": "Xưng hô nhất quán suốt video: nhân vật nam xưng 'anh', gọi nữ là 'em'; nhân vật nữ xưng "
                       "'em', gọi nam là 'anh'. Không dùng 'tôi', 'bạn', 'mày', 'tao'."},

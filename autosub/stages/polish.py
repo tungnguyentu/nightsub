@@ -23,9 +23,12 @@ def polish(cfg, segs, lang, used, progress=lambda f: None, brief=None):
     # ponytail: one call per flagged line; batch several per call if this stage dominates the bench.
     idx = [i for i, s in enumerate(segs) if s["text"] != UNTRANSLATED and is_flagged(s, cfg)]
     for n, i in enumerate(idx):
+        old = segs[i]["text"]
+        segs[i]["polished"] = False
         out = with_fallback(cfg, [segs[i]["src"]], None, lang, used, rewrite_prompt(segs, i, lang, cfg, brief))
-        if out:
+        if out and out[0] != old:
             segs[i]["text"] = out[0]
+            segs[i]["polished"] = True
         progress((n + 1) / len(idx))
     return len(idx) / len(segs) if segs else 0.0
 

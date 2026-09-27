@@ -5,13 +5,17 @@ import sqlite3
 SCHEMA = """CREATE TABLE IF NOT EXISTS jobs (
   id INTEGER PRIMARY KEY, video TEXT NOT NULL, lang TEXT NOT NULL, tags INTEGER DEFAULT 0,
   stage TEXT DEFAULT 'queued', progress REAL DEFAULT 0, error TEXT, audio_min REAL,
-  failed_lines INTEGER DEFAULT 0, flagged_share REAL, cues INTEGER, stage_times TEXT DEFAULT '{}')"""
+  failed_lines INTEGER DEFAULT 0, flagged_share REAL, cues INTEGER, stage_times TEXT DEFAULT '{}',
+  stage_started_at REAL)"""
 
 
 def _conn(db):
     c = sqlite3.connect(db, timeout=30)
     c.row_factory = sqlite3.Row
     c.execute(SCHEMA)
+    columns = {r["name"] for r in c.execute("PRAGMA table_info(jobs)")}
+    if "stage_started_at" not in columns:
+        c.execute("ALTER TABLE jobs ADD COLUMN stage_started_at REAL")
     return c
 
 

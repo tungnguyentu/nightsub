@@ -20,10 +20,10 @@ def ps(url):
     return _req(url, "/api/ps", timeout=5)["models"]
 
 
-def chat(url, model, messages):
+def chat(url, model, messages, cfg=None):
     out = _req(url, "/api/chat", {"model": model, "messages": messages, "stream": False, "think": False,
                                   "options": {"temperature": 0.3, "num_predict": 1024,  # cap runaway repetition loops
-                                              "num_ctx": 2048,  # prompts are <1k tokens; smaller KV cache fits 6 GB
+                                              "num_ctx": (cfg or {}).get("llm_ctx", 4096),
                                               "num_gpu": 99}},  # all layers on GPU; ollama's estimate is too cautious on 6 GB
                timeout=180)
     # Qwen3-style models may emit a thinking block; drop it.
