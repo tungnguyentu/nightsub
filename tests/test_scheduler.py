@@ -40,7 +40,14 @@ def test_resume_skips_asr(tmp_path, monkeypatch):
     db, ids = make(tmp_path, monkeypatch, ["transcribed"])
     calls = []
     scheduler.run_pass(CFG, db, recorder(calls))
-    assert [c[0] for c in calls] == ["translate", "polish", "retime"]
+    assert [c[0] for c in calls] == ["brief", "translate", "polish", "retime"]
+
+
+def test_old_translated_job_is_not_rebriefed(tmp_path, monkeypatch):
+    db, ids = make(tmp_path, monkeypatch, ["translated"])
+    calls = []
+    scheduler.run_pass(CFG, db, recorder(calls))
+    assert [c[0] for c in calls] == ["polish", "retime"]
 
 
 def test_gpu_busy_fails_job(tmp_path, monkeypatch):

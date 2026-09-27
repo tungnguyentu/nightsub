@@ -9,6 +9,7 @@ DEFAULTS = {
     # Assumption (KTD6): verify tags/quality with scripts/bench.py.
     "models": {"en": "huihui_ai/qwen3-abliterated:8b", "vi": "gemma3:4b"},
     "fallback_model": "dolphin3:8b",
+    "brief_model": None,  # defaults to the Vietnamese model so EN and VI jobs share one scene brief
     "min_gpu_share": 0.9,  # translate/polish fail if less of the model than this is on GPU (R9)
     "pivot": {},  # e.g. {"vi": "en"} to go JA -> en -> vi; measured worse with qwen3-4b (English leaks through)
     "asr_model": "kotoba-tech/kotoba-whisper-v2.0-faster",  # JA-tuned large-v3 distil: 2.6x faster, more lines caught
@@ -34,6 +35,8 @@ def load(path="autosub.toml"):
     p = Path(path)
     if p.exists():
         cfg.update(tomllib.loads(p.read_text()))
+    if cfg.get("brief_model") is None:
+        cfg["brief_model"] = cfg["models"]["vi"]
     if os.environ.get("AUTOSUB_WORK_DIR"):  # set by the scheduler for stage subprocesses
         cfg["work_dir"] = os.environ["AUTOSUB_WORK_DIR"]
     return cfg

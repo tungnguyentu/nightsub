@@ -8,10 +8,11 @@ import time
 from . import gpu, jobs, preflight
 
 # (name, from_stage, to_stage). Stage runners take (cfg, db, batch) and advance/fail jobs themselves.
-STAGES = [("gate", "queued", "gated"), ("asr", "gated", "transcribed"), ("translate", "transcribed", "translated"),
+STAGES = [("gate", "queued", "gated"), ("asr", "gated", "transcribed"), ("brief", "transcribed", "briefed"),
+          ("translate", "briefed", "translated"),
           ("polish", "translated", "polished"), ("retime", "polished", "done")]
 
-LLM_STAGES = {"translate", "polish"}
+LLM_STAGES = {"brief", "translate", "polish"}
 
 
 def subprocess_stage(name):
@@ -47,6 +48,7 @@ def inprocess_stage(name):
 
 
 RUNNERS = {"gate": subprocess_stage("gate"), "asr": subprocess_stage("asr"),
+           "brief": inprocess_stage("brief"),
            "translate": inprocess_stage("translate"), "polish": inprocess_stage("polish"),
            "retime": inprocess_stage("retime")}
 
