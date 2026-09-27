@@ -11,8 +11,9 @@ from autosub import config, jobs, scheduler
 from autosub.stages import translate
 
 
-def pipeline(video, langs):
-    cfg = {**config.load(), "work_dir": tempfile.mkdtemp(prefix="autosub-bench-")}
+def pipeline(video, langs, work_dir=None):
+    # reuse a work dir to hit its ASR cache (skips re-transcribing the same video)
+    cfg = {**config.load(), "work_dir": work_dir or tempfile.mkdtemp(prefix="autosub-bench-")}
     db = config.db_path(cfg)
     ids = [jobs.add(db, video, lang) for lang in langs.split(",")]  # one pass: ASR once, reused via the cache
     times = {}
@@ -57,8 +58,9 @@ if __name__ == "__main__":
     a = sub.add_parser("pipeline")
     a.add_argument("video")
     a.add_argument("--lang", default="en", help="comma list, e.g. en,vi")
+    a.add_argument("--work-dir", help="reuse this dir (its ASR cache) instead of a fresh temp dir")
     b = sub.add_parser("models")
     b.add_argument("sample")
     b.add_argument("names", nargs="*")
     args = p.parse_args()
-    pipeline(args.video, args.lang) if args.cmd == "pipeline" else models(args.sample, args.names)
+    pipeline(args.video, args.lang, args.work_dir) if args.cmd == "pipeline" else models(args.sample, args.names)
