@@ -1,5 +1,6 @@
 import json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -42,3 +43,13 @@ def test_refusal_falls_back_to_local_and_is_counted(monkeypatch):
     cfg = {"ollama_url": "", "models": {"vi": "agy/gemini"}, "fallback_model": "gemma3:4b"}
     assert translate.with_fallback(cfg, ["x"], [], "vi", set()) == ["Anh yêu em"]
     assert translate.SERVED == {"gemma3:4b": 1}
+
+
+def test_served_counter_counts_parallel_windows(monkeypatch):
+    translate.SERVED.clear()
+    monkeypatch.setattr(agy, "chat", lambda model, msgs: '["Anh yêu em"]')
+    cfg = {"ollama_url": "", "models": {"vi": "agy/gemini"}, "fallback_model": "agy/gemini"}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: translate.with_fallback(cfg, ["x"], [], "vi", set()), range(128)))
+    assert all(result == ["Anh yêu em"] for result in results)
+    assert translate.SERVED["agy/gemini"] == 128

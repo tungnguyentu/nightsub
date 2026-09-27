@@ -19,6 +19,8 @@ DEFAULTS = {
     "vram_needed_mb": 5000,
     "vram_wait_s": 30,
     "window": 12,
+    "cloud_window": 24,
+    "cloud_parallel": 4,
     "context_lines": 6,
     "lookahead_lines": 4,
     "llm_ctx": 4096,  # target RTX 3050: verify size_vram == size through Ollama /api/ps

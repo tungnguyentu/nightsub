@@ -1,4 +1,7 @@
 import json
+import random
+import threading
+import time
 
 import pytest
 
@@ -24,6 +27,11 @@ def fake(monkeypatch, reply, ps=()):
 
 def ok(n):
     return json.dumps([f"line {i}" for i in range(n)])
+
+
+def prompt_lines(messages):
+    block = messages[1]["content"].split("Translate:\n", 1)[1].split("\n\nFollowing lines", 1)[0]
+    return [line.split(". ", 1)[1] for line in block.splitlines()]
 
 
 def test_primary_refuses_fallback_ok(monkeypatch):
@@ -167,6 +175,123 @@ def test_chat_uses_configured_context(monkeypatch):
     monkeypatch.setattr(ollama, "_req", request)
     ollama.chat("http://local", "model", [], {"llm_ctx": 3072})
     assert seen["options"]["num_ctx"] == 3072
+
+
+def test_cloud_windows_run_concurrently_and_preserve_order_with_source_context(monkeypatch):
+    cfg = {**CFG, "models": {"en": "agy/cloud"}, "fallback_model": "agy/fallback",
+           "cloud_window": 2, "cloud_parallel": 3, "context_lines": 2, "lookahead_lines": 2}
+    rng = random.Random(42)
+    delays = [0.01, 0.03, 0.06]
+    rng.shuffle(delays)
+    messages_seen, completed, values, callback_threads = [], [], [], []
+    state_lock = threading.Lock()
+    active = max_active = 0
+    caller = threading.get_ident()
+
+    def chat(model, messages):
+        nonlocal active, max_active
+        lines = prompt_lines(messages)
+        with state_lock:
+            messages_seen.append(messages)
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(delays[int(lines[0].rsplit("-", 1)[1]) // 2])
+        with state_lock:
+            completed.append(int(lines[0].rsplit("-", 1)[1]) // 2)
+            active -= 1
+        return json.dumps([f"This is the translation: {line}" for line in lines])
+
+    monkeypatch.setattr(tr.agy, "chat", chat)
+    texts = [f"source-{i}" for i in range(6)]
+    brief = {"summary": "Context shared by the windows."}
+    out, failed = tr.translate_texts(cfg, texts, "en", set(),
+                                     lambda f: (values.append(f), callback_threads.append(threading.get_ident())),
+                                     sources=texts, brief=brief)
+    assert out == [f"This is the translation: {line}" for line in texts] and failed == 0
+    assert max_active == 3 and completed != [0, 1, 2]
+    assert values == sorted(values) and values[-1] == 1.0 and set(callback_threads) == {caller}
+    middle = next(m for m in messages_seen if "Translate:\n1. source-2" in m[1]["content"])
+    user = middle[1]["content"]
+    assert user.index("Context shared by the windows") < user.index("Previous Japanese source lines")
+    assert user.index("Previous Japanese source lines") < user.index("Translate:") < user.index("Following lines")
+    assert "source-0" in user and "source-1" in user and "source-4" in user and "=>" not in user
+
+
+def test_cloud_window_24_and_local_window_12(monkeypatch):
+    cloud_counts, local_counts = [], []
+    monkeypatch.setattr(tr.agy, "chat", lambda model, messages: cloud_counts.append(len(prompt_lines(messages))) or
+                        json.dumps(["ok"] * len(prompt_lines(messages))))
+    monkeypatch.setattr(tr.ollama, "chat", lambda url, model, messages, cfg=None: local_counts.append(len(prompt_lines(messages))) or
+                        json.dumps(["ok"] * len(prompt_lines(messages))))
+    monkeypatch.setattr(tr.ollama, "ps", lambda url: [])
+    monkeypatch.setattr(tr, "check_fit", lambda cfg, model: None)
+    texts = ["source"] * 49
+    base = {**CFG, "cloud_window": 24, "window": 12, "context_lines": 0, "lookahead_lines": 0}
+    tr.translate_texts({**base, "models": {"en": "agy/cloud"}, "fallback_model": "agy/fallback"}, texts, "en", set())
+    tr.translate_texts({**base, "models": {"en": "local"}, "fallback_model": "local"}, texts, "en", set())
+    assert cloud_counts == [24, 24, 1]
+    assert local_counts == [12, 12, 12, 12, 1]
+
+
+def test_cloud_refused_window_retries_lines_then_marks_only_failed_lines(monkeypatch):
+    cfg = {**CFG, "models": {"en": "agy/cloud"}, "fallback_model": "agy/fallback",
+           "cloud_window": 2, "cloud_parallel": 2, "context_lines": 0, "lookahead_lines": 0}
+    calls = []
+    def chat(model, messages):
+        lines = prompt_lines(messages)
+        calls.append((model, len(lines)))
+        if len(lines) > 1:
+            return "I cannot assist with this request."
+        return json.dumps([f"translated {lines[0]}"])
+    monkeypatch.setattr(tr.agy, "chat", chat)
+    tr.SERVED.clear()
+    out, failed = tr.translate_texts(cfg, ["a", "b", "c", "d"], "en", set())
+    assert out == ["translated a", "translated b", "translated c", "translated d"] and failed == 0
+    assert calls.count(("agy/fallback", 2)) == 2
+    assert calls.count(("agy/cloud", 1)) == 4
+
+
+def test_cloud_config_defaults():
+    assert config.DEFAULTS["cloud_window"] == 24
+    assert config.DEFAULTS["cloud_parallel"] == 4
+
+
+def test_local_fallback_calls_are_serialized_for_parallel_cloud_windows(monkeypatch):
+    cfg = {**CFG, "models": {"vi": "agy/cloud"}, "fallback_model": "gemma3:4b",
+           "cloud_window": 2, "cloud_parallel": 4, "context_lines": 0, "lookahead_lines": 0}
+    active = max_active = 0
+    lock = threading.Lock()
+
+    monkeypatch.setattr(tr.agy, "chat", lambda model, messages: "I cannot assist with this request.")
+    monkeypatch.setattr(tr.ollama, "ps", lambda url: [])
+    monkeypatch.setattr(tr, "check_fit", lambda cfg, model: None)
+    def local_chat(url, model, messages, cfg=None):
+        nonlocal active, max_active
+        n = len(prompt_lines(messages))
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.015)
+        with lock:
+            active -= 1
+        return json.dumps(["Anh yêu em" for _ in range(n)])
+    monkeypatch.setattr(tr.ollama, "chat", local_chat)
+    out, failed = tr.translate_texts(cfg, ["source"] * 12, "vi", set())
+    assert len(out) == 12 and failed == 0 and max_active == 1
+
+
+def test_stopped_progress_cancels_pool_and_propagates(monkeypatch):
+    from autosub import jobs
+    cfg = {**CFG, "models": {"en": "agy/cloud"}, "fallback_model": "agy/fallback",
+           "cloud_window": 1, "cloud_parallel": 2, "context_lines": 0, "lookahead_lines": 0}
+    monkeypatch.setattr(tr.agy, "chat", lambda model, messages: json.dumps(["translated"]))
+    calls = []
+    def progress(fraction):
+        calls.append(fraction)
+        raise jobs.Stopped("pause")
+    with pytest.raises(jobs.Stopped):
+        tr.translate_texts(cfg, ["source"] * 8, "en", set(), progress)
+    assert len(calls) == 1 and calls[0] > 0
 
 
 def test_gender_tag_goes_in_and_is_stripped_out():

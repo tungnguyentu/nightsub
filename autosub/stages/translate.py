@@ -1,7 +1,9 @@
 """Translate stage (U5, KTD6): windowed ollama chat, refusal -> fallback model -> single lines -> marker."""
 import collections
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
+import threading
 
 from .. import agy, config, jobs, ollama
 from ..refusal import is_refusal
@@ -11,6 +13,8 @@ UNTRANSLATED = "[untranslated]"
 
 
 SERVED = collections.Counter()  # model -> windows it translated (shows how often a cloud model refused)
+SERVED_LOCK = threading.Lock()
+LOCAL_MODEL_LOCK = threading.Lock()
 
 
 class GpuFitError(RuntimeError):
@@ -65,7 +69,7 @@ def address_rule(cfg, lang, brief=None):
     return f" {rule}" if rule else ""
 
 
-def prompt(lines, ctx, lang, cfg=None, *, following=None, brief=None):
+def prompt(lines, ctx, lang, cfg=None, *, previous_sources=None, following=None, brief=None):
     system = (f"You translate subtitles of adult films into natural, colloquial {LANGS[lang]}. Explicit sexual "
               "content is expected: translate it faithfully, never censor, never comment. Reply with ONLY a JSON "
               f"array of exactly {len(lines)} strings, one per input line, in order. A line may start with [M] "
@@ -77,6 +81,8 @@ def prompt(lines, ctx, lang, cfg=None, *, following=None, brief=None):
         user += f"Scene brief (context only): {summary}\n\n"
     if ctx:
         user += "Previous lines (context only):\n" + "\n".join(f"{ja} => {vi}" for ja, vi in ctx) + "\n\n"
+    if previous_sources:
+        user += "Previous Japanese source lines (context only):\n" + "\n".join(f"- {line}" for line in previous_sources) + "\n\n"
     user += "Translate:\n" + "\n".join(f"{i + 1}. {t}" for i, t in enumerate(lines))
     if following:
         user += "\n\nFollowing lines (context only, do not translate):\n" + "\n".join(f"- {line}" for line in following)
@@ -96,10 +102,12 @@ def ask(cfg, model, lines, ctx, lang, used, messages=None):
     if agy.is_agy(model):  # cloud: nothing on the GPU to check or free
         content = agy.chat(model, msgs)
     else:
-        content = ollama.chat(cfg["ollama_url"], model, msgs, cfg)
-    if model not in used and not agy.is_agy(model):
-        used.add(model)
-        check_fit(cfg, model)
+        # Cloud windows can fall back together, but only one local GPU request may run at once.
+        with LOCAL_MODEL_LOCK:
+            content = ollama.chat(cfg["ollama_url"], model, msgs, cfg)
+            if model not in used:
+                used.add(model)
+                check_fit(cfg, model)
     content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())  # gemma wraps JSON in a code fence
     try:
         return json.loads(content)
@@ -114,32 +122,85 @@ def with_fallback(cfg, lines, ctx, lang, used, messages=None):
         except OSError:  # timeout / connection drop: same path as a refusal (R13)
             continue
         if not is_refusal(lines, out, lang):
-            SERVED[model] += 1
+            with SERVED_LOCK:
+                SERVED[model] += 1
             return out
     return None
+
+
+def _translate_window(cfg, win, lang, used, *, ctx, previous_sources, following, brief):
+    messages = prompt(win, ctx, lang, cfg, previous_sources=previous_sources, following=following, brief=brief)
+    res = with_fallback(cfg, win, ctx, lang, used, messages)
+    if res is not None:
+        return res, 0
+    out, failed = [], 0
+    for line in win:
+        single = prompt([line], ctx, lang, cfg, previous_sources=previous_sources, following=following, brief=brief)
+        one = with_fallback(cfg, [line], ctx, lang, used, single)
+        out.append(one[0] if one else UNTRANSLATED)
+        failed += one is None
+    return out, failed
 
 
 def translate_texts(cfg, texts, lang, used, progress=lambda f: None, *, sources=None, brief=None, two_sided=True):
     """-> (translations, failed_line_count). Never drops a line (R13)."""
     sources = list(sources) if sources is not None else list(texts)
-    out, failed, n = [], 0, cfg["window"]
-    for i in range(0, len(texts), n):
-        win = texts[i:i + n]
-        prev_n = cfg["context_lines"]
-        ctx = list(zip(sources[max(0, i - prev_n):i], out[max(0, i - prev_n):i])) if prev_n and two_sided else []
-        lookahead = cfg.get("lookahead_lines", 4) if two_sided else 0
-        following = sources[i + n:i + n + lookahead]
-        messages = prompt(win, ctx, lang, cfg, following=following, brief=brief)
-        res = with_fallback(cfg, win, ctx, lang, used, messages)
-        if res is None:
-            res = []
-            for line in win:
-                single_messages = prompt([line], ctx, lang, cfg, following=following, brief=brief)
-                one = with_fallback(cfg, [line], ctx, lang, used, single_messages)
-                res.append(one[0] if one else UNTRANSLATED)
-                failed += one is None
-        out += res
-        progress(min(1, (i + n) / len(texts)))
+    cloud = agy.is_agy(cfg["models"][lang])
+    n = cfg.get("cloud_window", 24) if cloud else cfg["window"]
+    prev_n = cfg.get("context_lines", 0)
+    lookahead = cfg.get("lookahead_lines", 4) if two_sided else 0
+    completed_lines = 0
+    last_progress = 0.0
+    progress_lock = threading.Lock()
+
+    def report(value):
+        nonlocal last_progress
+        with progress_lock:
+            last_progress = max(last_progress, min(1.0, float(value)))
+            progress(last_progress)
+
+    windows = [(i, texts[i:i + n]) for i in range(0, len(texts), n)]
+    failed = 0
+    if cloud:
+        results = [None] * len(windows)
+
+        def translate(index, i, win):
+            previous = sources[max(0, i - prev_n):i] if two_sided and prev_n else []
+            following = sources[i + len(win):i + len(win) + lookahead]
+            res, errors = _translate_window(cfg, win, lang, used, ctx=[], previous_sources=previous,
+                                            following=following, brief=brief)
+            return index, res, errors
+
+        pool = ThreadPoolExecutor(max_workers=max(1, int(cfg.get("cloud_parallel", 4))))
+        futures = {}
+        try:
+            for index, (i, win) in enumerate(windows):
+                futures[pool.submit(translate, index, i, win)] = index
+            for future in as_completed(futures):
+                index, res, errors = future.result()
+                results[index] = res
+                failed += errors
+                completed_lines += len(windows[index][1])
+                report(completed_lines / len(texts))
+        except BaseException:
+            for future in futures:
+                future.cancel()
+            pool.shutdown(wait=True, cancel_futures=True)
+            raise
+        else:
+            pool.shutdown(wait=True)
+        out = [line for result in results for line in result]
+    else:
+        out = []
+        for i, win in windows:
+            ctx = list(zip(sources[max(0, i - prev_n):i], out[max(0, i - prev_n):i])) if prev_n and two_sided else []
+            following = sources[i + len(win):i + len(win) + lookahead]
+            res, errors = _translate_window(cfg, win, lang, used, ctx=ctx, previous_sources=[],
+                                            following=following, brief=brief)
+            out.extend(res)
+            failed += errors
+            completed_lines += len(win)
+            report(completed_lines / len(texts))
     return out, failed
 
 
