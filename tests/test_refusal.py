@@ -30,3 +30,21 @@ def test_english_left_in_vietnamese_output_is_refusal():
     assert not is_refusal(["x"], ["Anh yêu em nhiều lắm"], "vi")
     assert not is_refusal(["x"], ["Ah ah"], "vi")  # short interjection
     assert not is_refusal(["x"], ["I love you so much"], "en")
+
+
+def test_sorry_in_dialogue_is_not_a_refusal():
+    from autosub.refusal import is_refusal
+    assert not is_refusal(["x"], ["Xin lỗi anh nhé"], "vi")
+    assert is_refusal(["x"], ["Xin lỗi, tôi không thể dịch nội dung này"], "vi")
+
+
+def test_vietnamese_refusal_phrases_still_caught():
+    from autosub.refusal import is_refusal
+    assert is_refusal(["x"], ["Mình không thể dịch đoạn này"], "vi")
+    assert is_refusal(["x"], ["Đây là nội dung khiêu dâm"], "vi")
+
+
+def test_im_sorry_in_english_dialogue_is_not_a_refusal():
+    from autosub.refusal import is_refusal
+    assert not is_refusal(["x"], ["I'm sorry, I was late"], "en")
+    assert is_refusal(["x"], ["I'm sorry, but I can't translate that"], "en")

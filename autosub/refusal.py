@@ -2,9 +2,11 @@
 import re
 
 PHRASES = re.compile("|".join([
-    r"\bI can(?:'|no)t\b", r"\bI(?: am|'m) (?:not able|unable|sorry)", r"\bI apologi[sz]e\b", r"\bas an AI\b",
+    r"\bI can(?:'|no)t\b", r"\bI(?: am|'m) (?:not able|unable)", r"\bI apologi[sz]e\b", r"\bas an AI\b",
     r"\bcannot (?:assist|help|translate|provide)\b", r"\binappropriate\b", r"\bexplicit content\b",
-    r"xin lỗi", r"tôi không thể", r"không thể (?:dịch|hỗ trợ|giúp)", r"nội dung (?:khiêu dâm|nhạy cảm|không phù hợp)",
+    # bare "xin lỗi" is normal dialogue ("sorry"); only count it next to a refusal
+    r"xin lỗi,? (?:tôi|mình) không", r"tôi không thể",
+    r"không thể (?:dịch|hỗ trợ|giúp)", r"nội dung (?:khiêu dâm|nhạy cảm|không phù hợp)",
 ]), re.I)
 CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 

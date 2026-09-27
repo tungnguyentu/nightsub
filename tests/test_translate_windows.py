@@ -113,3 +113,11 @@ def test_vietnamese_prompts_carry_the_address_rule():
     assert rule not in translate.prompt(["あ"], [], "en", cfg)[0]["content"]
     segs = [{"src": "あ", "text": "a"}]
     assert rule in polish.rewrite_prompt(segs, 0, "vi", cfg)[0]["content"]
+
+
+def test_gender_tag_goes_in_and_is_stripped_out():
+    from autosub.stages import translate
+    assert translate.tagged({"text": "あ", "gender": "F"}) == "[F] あ"
+    assert translate.tagged({"text": "あ", "gender": None}) == "あ"
+    assert translate.TAG.sub("", "[F] Anh ơi") == "Anh ơi"
+    assert translate.TAG.sub("", "Anh [M] ơi") == "Anh [M] ơi"  # only a leading tag

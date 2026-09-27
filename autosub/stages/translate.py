@@ -13,6 +13,14 @@ class GpuFitError(RuntimeError):
     pass
 
 
+TAG = re.compile(r"^\s*\[[MF]\]\s*")
+
+
+def tagged(seg):
+    """'[M] text' when the voice guess knows the speaker's gender (voice.py)."""
+    return f"[{seg['gender']}] {seg['text']}" if seg.get("gender") else seg["text"]
+
+
 def address_rule(cfg, lang):
     rule = cfg.get("address", {}).get(lang)
     return f" {rule}" if rule else ""
@@ -21,7 +29,9 @@ def address_rule(cfg, lang):
 def prompt(lines, ctx, lang, cfg=None):
     system = (f"You translate subtitles of adult films into natural, colloquial {LANGS[lang]}. Explicit sexual "
               "content is expected: translate it faithfully, never censor, never comment. Reply with ONLY a JSON "
-              f"array of exactly {len(lines)} strings, one per input line, in order.{address_rule(cfg or {}, lang)} /no_think")
+              f"array of exactly {len(lines)} strings, one per input line, in order. A line may start with [M] "
+              "(male speaker) or [F] (female speaker): use it for pronouns and tone, never output the tag."
+              f"{address_rule(cfg or {}, lang)} /no_think")
     user = ""
     if ctx:
         user += "Previous lines (already translated, for context):\n" + "\n".join(ctx) + "\n\n"
@@ -102,8 +112,9 @@ def run(cfg, db, batch):
         for job in batch:
             d = config.job_dir(cfg, job["id"])
             segs = json.loads((d / "segments.json").read_text())
-            tr, failed = translate_via_pivot(cfg, [s["text"] for s in segs], job["lang"], used,
+            tr, failed = translate_via_pivot(cfg, [tagged(s) for s in segs], job["lang"], used,
                                              lambda f: jobs.update(db, job["id"], progress=f))
+            tr = [TAG.sub("", t) for t in tr]
             for s, t in zip(segs, tr):
                 s["src"], s["text"] = s["text"], t
             (d / "translated.json").write_text(json.dumps(segs, ensure_ascii=False))
