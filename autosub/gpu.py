@@ -1,3 +1,5 @@
+import contextlib
+import fcntl
 import subprocess
 import time
 
@@ -25,3 +27,17 @@ def wait_free(need_mb, timeout_s=30):
         if time.monotonic() >= deadline:
             return "GPU busy: " + (", ".join(holders()) or f"less than {need_mb} MiB free")
         time.sleep(1)
+
+
+LOCK_PATH = "/tmp/nightsub-gpu.lock"
+
+
+@contextlib.contextmanager
+def lock(path=LOCK_PATH):
+    """One GPU stage at a time across processes (web worker, bench, CLI). Blocks until free."""
+    with open(path, "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)

@@ -95,3 +95,16 @@ def test_subprocess_exit_fails_only_its_jobs(tmp_path, monkeypatch):
     a, b = jobs.get(db, ids[0]), jobs.get(db, ids[1])
     assert a["error"] == "asr: RuntimeError: CUDA oops"
     assert b["error"] is None and b["stage"] == "done"
+
+
+def test_gpu_lock_is_exclusive_across_holders(tmp_path):
+    import fcntl
+    from autosub import gpu
+    path = str(tmp_path / "gpu.lock")
+    with gpu.lock(path):
+        with open(path, "w") as other:
+            import pytest
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with open(path, "w") as other:  # released after the block
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)

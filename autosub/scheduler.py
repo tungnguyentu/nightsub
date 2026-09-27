@@ -1,4 +1,5 @@
 """Stage-major worker (KTD10): each stage runs once over every job waiting for it."""
+import contextlib
 import os
 import subprocess
 import sys
@@ -20,6 +21,7 @@ STEP_INFO = [
     {"name": "retime", "label_vi": "Căn thời gian", "help_vi": "Điều chỉnh thời lượng và tốc độ đọc."},
 ]
 
+GPU_STAGES = {"gate", "asr", "brief", "translate", "polish"}  # everything but retime
 LLM_STAGES = {"brief", "translate", "polish"}
 
 
@@ -75,22 +77,23 @@ def run_pass(cfg, db, runners=RUNNERS):
         batch = jobs.at_stage(db, frm)
         if not batch:
             continue
-        if name in LLM_STAGES:
-            reason = gpu.wait_free(cfg["vram_needed_mb"], cfg["vram_wait_s"])  # R9, AE2
-            if reason:
-                for j in batch:
-                    jobs.fail(db, j["id"], reason)
-                continue
-        started_at = time.time()
-        for j in batch:
-            jobs.update(db, j["id"], stage_started_at=started_at)
-        t0 = time.monotonic()
-        try:
-            runners[name](cfg, db, batch)
-        except Exception as e:  # one stage blowing up fails its batch, not the worker
+        with (gpu.lock(cfg.get("gpu_lock", gpu.LOCK_PATH)) if name in GPU_STAGES else contextlib.nullcontext()):
+            if name in LLM_STAGES:
+                reason = gpu.wait_free(cfg["vram_needed_mb"], cfg["vram_wait_s"])  # R9, AE2
+                if reason:
+                    for j in batch:
+                        jobs.fail(db, j["id"], reason)
+                    continue
+            started_at = time.time()
             for j in batch:
-                jobs.fail(db, j["id"], f"{name}: {e}")
-        _record_time(db, name, batch, time.monotonic() - t0)
+                jobs.update(db, j["id"], stage_started_at=started_at)
+            t0 = time.monotonic()
+            try:
+                runners[name](cfg, db, batch)
+            except Exception as e:  # one stage blowing up fails its batch, not the worker
+                for j in batch:
+                    jobs.fail(db, j["id"], f"{name}: {e}")
+            _record_time(db, name, batch, time.monotonic() - t0)
     return True
 
 
