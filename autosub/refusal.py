@@ -1,6 +1,8 @@
 """Heuristic refusal detection (KTD7): wrong shape, refusal phrasing, or still in the source script."""
 import re
 
+from .flags import repeats
+
 PHRASES = re.compile("|".join([
     r"\bI can(?:'|no)t\b", r"\bI(?: am|'m) (?:not able|unable)", r"\bI apologi[sz]e\b", r"\bas an AI\b",
     r"\bcannot (?:assist|help|translate|provide)\b", r"\binappropriate\b", r"\bexplicit content\b",
@@ -20,8 +22,9 @@ VI_MARKS = re.compile(r"[ăâđêôơưạảấầẩẫậắằẳẵặẹ�
 
 
 def not_vietnamese(text):
-    """3+ words with no Vietnamese diacritic: the model left it in English (short interjections are fine)."""
-    return len(text.split()) >= 3 and not VI_MARKS.search(text)
+    """3+ words with no Vietnamese diacritic: the model left it in English (short interjections are fine).
+    Repeated-syllable sounds ("Ha ha ha ha", "A ha ha") are the same in every language, not a leak."""
+    return len(text.split()) >= 3 and not VI_MARKS.search(text) and not repeats(text)
 
 
 def is_refusal(src_lines, out, lang=None):

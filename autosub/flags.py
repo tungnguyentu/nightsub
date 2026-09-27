@@ -4,7 +4,7 @@ import re
 
 def repeats(text):
     """'あああああ', 'ha ha ha ha' -> True: a 1-4 char unit repeated 4+ times."""
-    return bool(re.search(r"(.{1,4})\1{3,}", re.sub(r"[\W_]+", "", text)))
+    return bool(re.search(r"(.{1,4})\1{3,}", re.sub(r"[\W_]+", "", text).lower()))  # "Ha ha" == "ha ha"
 
 
 # Vietnamese personal pronouns that signal the wrong register if they aren't the chosen pair.

@@ -48,3 +48,10 @@ def test_im_sorry_in_english_dialogue_is_not_a_refusal():
     from autosub.refusal import is_refusal
     assert not is_refusal(["x"], ["I'm sorry, I was late"], "en")
     assert is_refusal(["x"], ["I'm sorry, but I can't translate that"], "en")
+
+
+def test_laughter_is_not_an_english_leak():
+    from autosub.refusal import is_refusal
+    for out in ["Ha ha ha ha", "A ha ha ha ha", "Ha ha ha ha ha!"]:  # MNGS-051 lines 330 and 1123
+        assert not is_refusal(["アハハハ"], [out], "vi")
+    assert is_refusal(["x"], ["I love you so much"], "vi")  # a real leak is still caught
