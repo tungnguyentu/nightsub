@@ -3,16 +3,21 @@ import hashlib
 import json
 from pathlib import Path
 
-from .. import jobs
+from .. import jobs, voice
 from . import cli, read_wav
 
 SR = 16000
 
 
-def offset_segments(span_start, segs):
-    """Shift span-relative segments to absolute time (no drift, R7); drop empty text."""
-    return [{"start": round(span_start + s.start, 3), "end": round(span_start + s.end, 3),
-             "text": s.text.strip(), "logprob": s.avg_logprob} for s in segs if s.text.strip()]
+def offset_segments(span_start, segs, clip=None):
+    """Shift span-relative segments to absolute time (no drift, R7); drop empty text; guess speaker gender."""
+    out = []
+    for s in segs:
+        if s.text.strip():
+            g = voice.gender(clip[int(s.start * SR):int(s.end * SR)]) if clip is not None else None
+            out.append({"start": round(span_start + s.start, 3), "end": round(span_start + s.end, 3),
+                        "text": s.text.strip(), "logprob": s.avg_logprob, "gender": g})
+    return out
 
 
 def load(cfg):
@@ -22,7 +27,7 @@ def load(cfg):
 
 def cache_path(cfg, video):
     """Transcript is per video, not per language: a second job on the same file reuses it."""
-    key = hashlib.sha1(f"{Path(video).resolve()}|{cfg['asr_model']}".encode()).hexdigest()[:16]
+    key = hashlib.sha1(f"{Path(video).resolve()}|{cfg['asr_model']}|{cfg['asr_language']}|g1".encode()).hexdigest()[:16]
     p = Path(cfg["work_dir"]) / "asr-cache"
     p.mkdir(parents=True, exist_ok=True)
     return p / f"{key}.json"
@@ -55,7 +60,7 @@ def process(cfg, db, job, d, model):
         for i, sp in enumerate(speech):
             if i not in done:
                 clip = audio[int(sp["start"] * SR):int(sp["end"] * SR)]
-                done[i] = offset_segments(sp["start"], transcribe(model, clip, cfg))
+                done[i] = offset_segments(sp["start"], transcribe(model, clip, cfg), clip)
                 f.write(json.dumps({"i": i, "segs": done[i]}, ensure_ascii=False) + "\n")
                 f.flush()
             jobs.update(db, job["id"], progress=(i + 1) / len(speech))
