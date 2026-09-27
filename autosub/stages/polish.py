@@ -3,7 +3,7 @@ import json
 
 from .. import config, jobs
 from ..flags import is_flagged
-from .translate import LANGS, UNTRANSLATED, address_rule, brief_summary, unload_all, with_fallback
+from .translate import LANGS, UNTRANSLATED, address_rule, allowed_pronouns, brief_summary, unload_all, with_fallback
 
 
 def rewrite_prompt(segs, i, lang, cfg=None, brief=None):
@@ -21,7 +21,8 @@ def rewrite_prompt(segs, i, lang, cfg=None, brief=None):
 def polish(cfg, segs, lang, used, progress=lambda f: None, brief=None):
     """Rewrites flagged lines in place; returns the flagged share. Refused rewrites keep the old line."""
     # ponytail: one call per flagged line; batch several per call if this stage dominates the bench.
-    idx = [i for i, s in enumerate(segs) if s["text"] != UNTRANSLATED and is_flagged(s, cfg)]
+    allowed = allowed_pronouns(lang, brief)
+    idx = [i for i, s in enumerate(segs) if s["text"] != UNTRANSLATED and is_flagged(s, cfg, allowed)]
     for n, i in enumerate(idx):
         old = segs[i]["text"]
         segs[i]["polished"] = False

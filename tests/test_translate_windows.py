@@ -118,7 +118,8 @@ def test_vietnamese_prompts_carry_the_address_rule():
 
 def test_brief_address_and_two_sided_context_order(monkeypatch):
     cfg = {**CFG, "window": 2, "context_lines": 1, "lookahead_lines": 1}
-    brief = {"summary": "Hai người là đồng nghiệp.", "vi_address": {"male_self": "tôi", "male_to_female": "chị"}}
+    brief = {"summary": "Hai người là đồng nghiệp.", "vi_address": {"male_self": "tôi", "male_to_female": "chị",
+                                                                   "female_self": "chị", "female_to_male": "tôi"}}
     messages_seen = []
     monkeypatch.setattr(tr.ollama, "ps", lambda url: [])
     def chat(url, model, messages, cfg=None):
@@ -183,6 +184,28 @@ def test_speaker_labels_in_vi_address_fall_back_to_static_rule():
     bad = {"vi_address": {"male_self": "Speaker 2", "male_to_female": "Speaker 1",
                           "female_self": "Speaker 1", "female_to_male": "Speaker 2"}}
     assert translate.address_rule(cfg, "vi", bad) == f" {cfg['address']['vi']}"
-    good = {"vi_address": {"male_self": "Chú", "male_to_female": "cháu", "female_self": "Speaker 1"}}
+    good = {"vi_address": {"male_self": "Chú", "male_to_female": "cháu", "female_self": "cháu",
+                           "female_to_male": "chú"}}
     rule = translate.address_rule(cfg, "vi", good)
     assert "'chú'" in rule and "'cháu'" in rule and "Speaker" not in rule
+
+
+def test_inconsistent_or_partial_pair_falls_back():
+    from autosub import config
+    from autosub.stages import translate
+    cfg = dict(config.DEFAULTS)
+    static = f" {cfg['address']['vi']}"
+    mixed = {"vi_address": {"male_self": "tôi", "male_to_female": "em", "female_self": "chị", "female_to_male": "ông"}}
+    assert translate.address_rule(cfg, "vi", mixed) == static  # the real 4B output from the clip run
+    assert translate.address_rule(cfg, "vi", {"vi_address": {"male_self": "anh"}}) == static
+    assert translate.allowed_pronouns("vi", mixed) == {"anh", "em"}
+
+
+def test_off_register_pronoun_is_flagged_for_polish():
+    from autosub import config, flags
+    cfg = dict(config.DEFAULTS)
+    seg = {"src": "おまえ何してる", "text": "Mày đang làm gì vậy", "logprob": -0.1}
+    assert flags.is_flagged(seg, cfg, {"anh", "em"})
+    assert not flags.is_flagged({**seg, "text": "Anh đang làm gì vậy"}, cfg, {"anh", "em"})
+    assert not flags.is_flagged(seg, cfg, None)  # English jobs: no pronoun check
+    assert not flags.is_flagged({**seg, "text": "Tôi đang làm gì vậy"}, cfg, {"tôi", "chị"})

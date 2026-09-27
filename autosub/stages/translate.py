@@ -30,18 +30,33 @@ VI_PRONOUNS = {"anh", "em", "chị", "cô", "chú", "bác", "ông", "bà", "chá
                "tao", "mày", "thầy", "trò", "sếp", "chồng", "vợ", "bố", "mẹ", "ba", "má"}
 
 
+DEFAULT_PAIR = {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}
+
+
+def address_pair(brief):
+    """The brief's Vietnamese pronoun pair, or None unless it is complete, real, and consistent:
+    what she calls him must be what he calls himself, and vice versa (anh/em, chú/cháu, sếp/em...)."""
+    address = brief.get("vi_address") if isinstance(brief, dict) else None
+    if not isinstance(address, dict):
+        return None
+    pair = {k: address.get(k).strip().lower() for k in DEFAULT_PAIR if isinstance(address.get(k), str)}
+    if len(pair) != 4 or not set(pair.values()) <= VI_PRONOUNS:  # 4B model sometimes answers "Speaker 1"
+        return None
+    if pair["female_to_male"] != pair["male_self"] or pair["male_to_female"] != pair["female_self"]:
+        return None
+    return pair
+
+
+def allowed_pronouns(lang, brief=None):
+    """Personal pronouns a Vietnamese line may use; others get flagged for polish (flags.py)."""
+    return set((address_pair(brief) or DEFAULT_PAIR).values()) if lang == "vi" else None
+
+
 def address_rule(cfg, lang, brief=None):
-    if lang == "vi" and isinstance(brief, dict):
-        address = brief.get("vi_address")
-        if isinstance(address, dict):  # keep only real pronouns; a 4B model sometimes answers "Speaker 1"
-            address = {k: v.strip().lower() for k, v in address.items()
-                       if isinstance(v, str) and v.strip().lower() in VI_PRONOUNS}
-        if isinstance(address, dict) and any(address.get(k) for k in (
-                "male_self", "male_to_female", "female_self", "female_to_male")):
-            fields = (("male_self", "nam tự xưng"), ("male_to_female", "nam gọi nữ"),
-                      ("female_self", "nữ tự xưng"), ("female_to_male", "nữ gọi nam"))
-            parts = [f"{label} '{address[key]}'" for key, label in fields if address.get(key)]
-            return " Xưng hô theo bối cảnh: " + "; ".join(parts) + "."
+    pair = address_pair(brief) if lang == "vi" else None
+    if pair:
+        return (f" Xưng hô theo bối cảnh: nam xưng '{pair['male_self']}', gọi nữ là '{pair['male_to_female']}'; "
+                f"nữ xưng '{pair['female_self']}', gọi nam là '{pair['female_to_male']}'. Giữ nguyên suốt video.")
     rule = cfg.get("address", {}).get(lang)
     return f" {rule}" if rule else ""
 
