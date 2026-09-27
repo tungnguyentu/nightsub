@@ -30,6 +30,7 @@ def pipeline(video, langs, work_dir=None):
     for n, t in times.items():
         print(f"{n:10} {t / 60:6.1f} min")
     print(f"{'total':10} {total / 60:6.1f} min for {jobs.get(db, ids[0])['audio_min'] or 0:.0f} min of audio")
+    print("windows served by model:", dict(translate.SERVED))
     for i in ids:
         j = jobs.get(db, i)
         print(f"[{j['lang']}] stage={j['stage']} error={j['error']} cues={j['cues']} "

@@ -1,12 +1,16 @@
 """Translate stage (U5, KTD6): windowed ollama chat, refusal -> fallback model -> single lines -> marker."""
+import collections
 import json
 import re
 
-from .. import config, jobs, ollama
+from .. import agy, config, jobs, ollama
 from ..refusal import is_refusal
 
 LANGS = {"en": "English", "vi": "Vietnamese"}
 UNTRANSLATED = "[untranslated]"
+
+
+SERVED = collections.Counter()  # model -> windows it translated (shows how often a cloud model refused)
 
 
 class GpuFitError(RuntimeError):
@@ -88,8 +92,12 @@ def check_fit(cfg, model):
 
 def ask(cfg, model, lines, ctx, lang, used, messages=None):
     """One chat call; None if the output isn't a JSON list. First call per model checks GPU fit (R9)."""
-    content = ollama.chat(cfg["ollama_url"], model, messages or prompt(lines, ctx, lang, cfg), cfg)
-    if model not in used:
+    msgs = messages or prompt(lines, ctx, lang, cfg)
+    if agy.is_agy(model):  # cloud: nothing on the GPU to check or free
+        content = agy.chat(model, msgs)
+    else:
+        content = ollama.chat(cfg["ollama_url"], model, msgs, cfg)
+    if model not in used and not agy.is_agy(model):
         used.add(model)
         check_fit(cfg, model)
     content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())  # gemma wraps JSON in a code fence
@@ -106,6 +114,7 @@ def with_fallback(cfg, lines, ctx, lang, used, messages=None):
         except OSError:  # timeout / connection drop: same path as a refusal (R13)
             continue
         if not is_refusal(lines, out, lang):
+            SERVED[model] += 1
             return out
     return None
 
