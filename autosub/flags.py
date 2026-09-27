@@ -16,6 +16,12 @@ def wrong_pronoun(text, allowed):
     return bool(words & (VI_OFF_REGISTER - allowed))
 
 
+def is_sound(text):
+    """'Ha ha ha', 'A ha ha', 'Ah ah ah', 'Hehe hehe': only short, repeated syllables (laughter, moans)."""
+    words = re.findall(r"[^\W\d_]+", text.lower())
+    return len(words) >= 2 and len(set(words)) <= 2 and all(len(w) <= 4 for w in words)
+
+
 def is_flagged(seg, cfg, allowed=None):
     """seg: {'src', 'text', 'logprob'}. allowed: Vietnamese pronoun set for this video (None = not Vietnamese)."""
     if seg["logprob"] < cfg["polish_logprob"]:

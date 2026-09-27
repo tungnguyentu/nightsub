@@ -55,3 +55,10 @@ def test_laughter_is_not_an_english_leak():
     for out in ["Ha ha ha ha", "A ha ha ha ha", "Ha ha ha ha ha!"]:  # MNGS-051 lines 330 and 1123
         assert not is_refusal(["アハハハ"], [out], "vi")
     assert is_refusal(["x"], ["I love you so much"], "vi")  # a real leak is still caught
+
+
+def test_short_laughter_is_not_an_english_leak():
+    from autosub.refusal import is_refusal
+    for out in ["Ha ha ha", "A ha ha", "Ah ah ah", "Ha ha ha…"]:  # MNGS-051 rerun: アハハハ lines
+        assert not is_refusal(["アハハハ"], [out], "vi")
+    assert is_refusal(["x"], ["Oh my god what"], "vi")  # 4 distinct words: still a real leak
