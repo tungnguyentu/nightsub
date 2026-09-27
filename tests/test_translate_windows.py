@@ -13,7 +13,8 @@ def fake(monkeypatch, reply, ps=()):
     calls = []
 
     def chat(url, model, messages):
-        n = messages[1]["content"].split("Translate:\n")[1].count("\n") + 1
+        window = messages[1]["content"].split("Translate:\n")[1].split("\n\nFollowing lines", 1)[0]
+        n = window.count("\n") + 1
         calls.append(model)
         return reply(model, n)
     monkeypatch.setattr(tr.ollama, "chat", chat)
@@ -82,7 +83,7 @@ def test_vi_goes_through_english(monkeypatch):
     from autosub.stages import translate
     seen = []
 
-    def tt(cfg, texts, lang, used, progress=lambda f: None):
+    def tt(cfg, texts, lang, used, progress=lambda f: None, **kwargs):
         seen.append((lang, list(texts)))
         return [f"{lang}:{t}" if t != "bad" else translate.UNTRANSLATED for t in texts], 0
     monkeypatch.setattr(translate, "translate_texts", tt)
@@ -93,7 +94,7 @@ def test_vi_goes_through_english(monkeypatch):
 
 def test_en_has_no_pivot(monkeypatch):
     from autosub.stages import translate
-    monkeypatch.setattr(translate, "translate_texts", lambda cfg, t, lang, used, progress=None: ([lang] * len(t), 0))
+    monkeypatch.setattr(translate, "translate_texts", lambda cfg, t, lang, used, progress=None, **kwargs: ([lang] * len(t), 0))
     assert translate.translate_via_pivot({"pivot": {"vi": "en"}}, ["a"], "en", set()) == (["en"], 0)
 
 
@@ -113,6 +114,47 @@ def test_vietnamese_prompts_carry_the_address_rule():
     assert rule not in translate.prompt(["あ"], [], "en", cfg)[0]["content"]
     segs = [{"src": "あ", "text": "a"}]
     assert rule in polish.rewrite_prompt(segs, 0, "vi", cfg)[0]["content"]
+
+
+def test_brief_address_and_two_sided_context_order(monkeypatch):
+    cfg = {**CFG, "window": 2, "context_lines": 1, "lookahead_lines": 1}
+    brief = {"summary": "Hai người là đồng nghiệp.", "vi_address": {"male_self": "tôi", "male_to_female": "chị"}}
+    messages_seen = []
+    monkeypatch.setattr(tr.ollama, "ps", lambda url: [])
+    def chat(url, model, messages):
+        messages_seen.append(messages)
+        n = messages[1]["content"].split("Translate:\n")[1].split("\n\nFollowing lines", 1)[0].count("\n") + 1
+        return ok(n)
+    monkeypatch.setattr(tr.ollama, "chat", chat)
+    out, failed = tr.translate_texts(cfg, ["[M] A", "[F] B", "[M] C", "[F] D"], "vi", set(),
+                                     sources=["JA1", "JA2", "JA3", "JA4"], brief=brief)
+    first_user = messages_seen[0][1]["content"]
+    user = messages_seen[1][1]["content"]
+    assert failed == 0 and len(out) == 4
+    assert user.index("Hai người là đồng nghiệp") < user.index("JA2 => line 1")
+    assert user.index("JA2 => line 1") < user.index("Translate:")
+    assert first_user.index("Hai người là đồng nghiệp") < first_user.index("Translate:") < first_user.index("JA3")
+    assert "Xưng hô theo bối cảnh" in messages_seen[0][0]["content"]
+    assert "tôi" in messages_seen[0][0]["content"]
+    assert "Following lines (context only, do not translate)" not in messages_seen[-1][1]["content"]
+
+
+def test_skipped_brief_uses_static_vi_rule_and_en_has_no_address():
+    cfg = dict(config.DEFAULTS)
+    rule = cfg["address"]["vi"]
+    assert rule in tr.prompt(["あ"], [], "vi", cfg, brief={"skipped": "model error"})[0]["content"]
+    assert not tr.address_rule(cfg, "en", {"vi_address": {"male_self": "anh"}})
+    from autosub.stages import polish
+    segs = [{"src": "あ", "text": "a"}]
+    prompt = polish.rewrite_prompt(segs, 0, "vi", cfg, {"summary": "Hai đồng nghiệp."})
+    assert "Hai đồng nghiệp." in prompt[0]["content"] and "Xưng hô theo bối cảnh" not in prompt[0]["content"]
+
+
+def test_window_response_count_excludes_following_context(monkeypatch):
+    cfg = {**CFG, "window": 2, "context_lines": 0, "lookahead_lines": 2}
+    fake(monkeypatch, lambda model, n: ok(n))
+    out, failed = tr.translate_texts(cfg, ["a", "b", "c", "d"], "en", set(), sources=["JA"] * 4)
+    assert len(out) == 4 and failed == 0
 
 
 def test_gender_tag_goes_in_and_is_stripped_out():

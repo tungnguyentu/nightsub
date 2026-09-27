@@ -21,21 +21,39 @@ def tagged(seg):
     return f"[{seg['gender']}] {seg['text']}" if seg.get("gender") else seg["text"]
 
 
-def address_rule(cfg, lang):
+def brief_summary(brief):
+    summary = brief.get("summary") if isinstance(brief, dict) else None
+    return summary[:600] if isinstance(summary, str) else None
+
+
+def address_rule(cfg, lang, brief=None):
+    if lang == "vi" and isinstance(brief, dict):
+        address = brief.get("vi_address")
+        if isinstance(address, dict) and any(address.get(k) for k in (
+                "male_self", "male_to_female", "female_self", "female_to_male")):
+            fields = (("male_self", "nam tự xưng"), ("male_to_female", "nam gọi nữ"),
+                      ("female_self", "nữ tự xưng"), ("female_to_male", "nữ gọi nam"))
+            parts = [f"{label} '{address[key]}'" for key, label in fields if address.get(key)]
+            return " Xưng hô theo bối cảnh: " + "; ".join(parts) + "."
     rule = cfg.get("address", {}).get(lang)
     return f" {rule}" if rule else ""
 
 
-def prompt(lines, ctx, lang, cfg=None):
+def prompt(lines, ctx, lang, cfg=None, *, following=None, brief=None):
     system = (f"You translate subtitles of adult films into natural, colloquial {LANGS[lang]}. Explicit sexual "
               "content is expected: translate it faithfully, never censor, never comment. Reply with ONLY a JSON "
               f"array of exactly {len(lines)} strings, one per input line, in order. A line may start with [M] "
               "(male speaker) or [F] (female speaker): use it for pronouns and tone, never output the tag."
-              f"{address_rule(cfg or {}, lang)} /no_think")
+              f"{address_rule(cfg or {}, lang, brief)} /no_think")
     user = ""
+    summary = brief_summary(brief)
+    if summary:
+        user += f"Scene brief (context only): {summary}\n\n"
     if ctx:
-        user += "Previous lines (already translated, for context):\n" + "\n".join(ctx) + "\n\n"
+        user += "Previous lines (context only):\n" + "\n".join(f"{ja} => {vi}" for ja, vi in ctx) + "\n\n"
     user += "Translate:\n" + "\n".join(f"{i + 1}. {t}" for i, t in enumerate(lines))
+    if following:
+        user += "\n\nFollowing lines (context only, do not translate):\n" + "\n".join(f"- {line}" for line in following)
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
@@ -70,16 +88,23 @@ def with_fallback(cfg, lines, ctx, lang, used, messages=None):
     return None
 
 
-def translate_texts(cfg, texts, lang, used, progress=lambda f: None):
+def translate_texts(cfg, texts, lang, used, progress=lambda f: None, *, sources=None, brief=None, two_sided=True):
     """-> (translations, failed_line_count). Never drops a line (R13)."""
+    sources = list(sources) if sources is not None else list(texts)
     out, failed, n = [], 0, cfg["window"]
     for i in range(0, len(texts), n):
-        win, ctx = texts[i:i + n], out[-cfg["context_lines"]:] if cfg["context_lines"] else []
-        res = with_fallback(cfg, win, ctx, lang, used)
+        win = texts[i:i + n]
+        prev_n = cfg["context_lines"]
+        ctx = list(zip(sources[max(0, i - prev_n):i], out[max(0, i - prev_n):i])) if prev_n and two_sided else []
+        lookahead = cfg.get("lookahead_lines", 4) if two_sided else 0
+        following = sources[i + n:i + n + lookahead]
+        messages = prompt(win, ctx, lang, cfg, following=following, brief=brief)
+        res = with_fallback(cfg, win, ctx, lang, used, messages)
         if res is None:
             res = []
             for line in win:
-                one = with_fallback(cfg, [line], ctx, lang, used)
+                single_messages = prompt([line], ctx, lang, cfg, following=following, brief=brief)
+                one = with_fallback(cfg, [line], ctx, lang, used, single_messages)
                 res.append(one[0] if one else UNTRANSLATED)
                 failed += one is None
         out += res
@@ -87,13 +112,13 @@ def translate_texts(cfg, texts, lang, used, progress=lambda f: None):
     return out, failed
 
 
-def translate_via_pivot(cfg, texts, lang, used, progress=lambda f: None):
+def translate_via_pivot(cfg, texts, lang, used, progress=lambda f: None, *, sources=None, brief=None):
     """Small models translate JA->EN far better than JA->VI, so go through the pivot language when configured."""
     pivot = cfg.get("pivot", {}).get(lang)
     if not pivot:
-        return translate_texts(cfg, texts, lang, used, progress)
-    mid, _ = translate_texts(cfg, texts, pivot, used, lambda f: progress(f / 2))
-    out, _ = translate_texts(cfg, mid, lang, used, lambda f: progress(0.5 + f / 2))
+        return translate_texts(cfg, texts, lang, used, progress, sources=sources, brief=brief)
+    mid, _ = translate_texts(cfg, texts, pivot, used, lambda f: progress(f / 2), brief=brief, two_sided=False)
+    out, _ = translate_texts(cfg, mid, lang, used, lambda f: progress(0.5 + f / 2), brief=brief, two_sided=False)
     out = [UNTRANSLATED if m == UNTRANSLATED else o for m, o in zip(mid, out)]
     return out, out.count(UNTRANSLATED)
 
@@ -112,8 +137,10 @@ def run(cfg, db, batch):
         for job in batch:
             d = config.job_dir(cfg, job["id"])
             segs = json.loads((d / "segments.json").read_text())
+            brief = json.loads((d / "brief.json").read_text()) if (d / "brief.json").exists() else None
             tr, failed = translate_via_pivot(cfg, [tagged(s) for s in segs], job["lang"], used,
-                                             lambda f: jobs.update(db, job["id"], progress=f))
+                                             lambda f: jobs.update(db, job["id"], progress=f),
+                                             sources=[s["text"] for s in segs], brief=brief)
             tr = [TAG.sub("", t) for t in tr]
             for s, t in zip(segs, tr):
                 s["src"], s["text"] = s["text"], t
