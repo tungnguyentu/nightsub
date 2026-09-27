@@ -35,16 +35,28 @@
   .actions { display: flex; gap: .3rem; flex-wrap: wrap; }
   button, summary { min-height: 44px; }
   button:focus-visible, summary:focus-visible, input:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
-  .steps-cell { min-width: 34rem; }
-  .step-strip { display: grid; grid-template-columns: repeat(6, minmax(5rem, 1fr)); gap: .35rem; }
-  .step { min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: .3rem .4rem; color: var(--muted); background: var(--bg); }
-  .step-title { display: flex; gap: .25rem; align-items: center; font-size: .78rem; line-height: 1.25; }
-  .step-meta { display: block; margin-top: .2rem; font-size: .7rem; white-space: nowrap; }
-  .step.done { color: var(--ok); border-color: color-mix(in srgb, var(--ok), var(--line) 55%); }
-  .step.running { color: var(--fg); border-color: var(--acc); }
-  .step.failed { color: var(--bad); border-color: var(--bad); }
-  .step-progress { height: .25rem; margin-top: .3rem; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .steps-cell { min-width: 0; max-width: 52rem; }
+  .steps-viewport { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+  .step-strip { display: flex; min-width: 42rem; list-style: none; margin: 0; padding: .2rem 0; }
+  .step-item { position: relative; flex: 1 0 0; min-width: 7rem; text-align: center; color: var(--muted); }
+  .step-item::after { content: ""; position: absolute; z-index: 0; top: 1rem; left: calc(50% + 1rem); width: calc(100% - 2rem); height: 2px; background: var(--line); }
+  .step-item:last-child::after { display: none; }
+  .step-item.is-complete::after { background: var(--ok); }
+  .step-head { position: relative; z-index: 1; display: flex; justify-content: center; }
+  .step-icon { display: grid; width: 2rem; height: 2rem; place-items: center; border: 2px solid var(--line); border-radius: 50%; color: var(--muted); background: var(--bg); font-size: .85rem; font-weight: 700; }
+  .step-item.is-complete .step-icon { border-color: var(--ok); color: var(--bg); background: var(--ok); }
+  .step-item.is-current .step-icon { border-color: var(--acc); color: var(--bg); background: var(--acc); }
+  .step-item.is-failed .step-icon { border-color: var(--bad); color: var(--bg); background: var(--bad); }
+  .step-item.is-current .step-label { color: var(--acc); font-weight: 700; }
+  .step-item.is-failed, .step-item.is-failed .step-label { color: var(--bad); }
+  .step-label { display: block; margin: .35rem .2rem 0; font-size: .78rem; line-height: 1.25; }
+  .step-meta { display: block; margin-top: .15rem; font-size: .7rem; white-space: nowrap; }
+  .step-item.is-complete .step-meta { color: var(--ok); }
+  .step-item.is-failed .step-meta { color: var(--bad); }
+  .step-progress { display: block; height: .25rem; max-width: 5rem; margin: .25rem auto 0; background: var(--line); border-radius: 99px; overflow: hidden; }
   .step-progress i { display: block; height: 100%; background: var(--acc); }
+  .step-item.is-failed .step-progress i { background: var(--bad); }
+  .step-preview { margin-top: .65rem; padding: .6rem; border: 1px solid var(--line); border-radius: 6px; }
   #stepLegend { margin-top: .7rem; }
   #stepLegend summary { cursor: pointer; }
   #stepLegend ul { margin: .35rem 0 0; padding-left: 1.2rem; }
@@ -60,8 +72,7 @@
   .badge.failed { color: var(--bad); border-color: var(--bad); }
   @media (max-width: 760px) {
     body { padding: .75rem; }
-    .steps-cell { min-width: 0; }
-    .step-strip { grid-template-columns: repeat(3, minmax(5.2rem, 1fr)); }
+    .step-strip { min-width: 42rem; }
     #rows tr { display: grid; grid-template-columns: min-content minmax(0, 1fr); border-bottom: 1px solid var(--line); }
     #rows td { border: 0; padding: .35rem; }
     #rows td:nth-child(2) { grid-column: 2; }
@@ -96,6 +107,7 @@
   </div>
   <details id="stepLegend">
     <summary>Các bước xử lý</summary>
+    <div id="stepPreview" class="step-preview" aria-label="Ví dụ: bước 3 đang chạy"><span class="muted">Đang tải xem trước…</span></div>
     <ul id="stepHelp"><li class="muted">Đang tải các bước…</li></ul>
   </details>
 </div>
@@ -153,6 +165,9 @@ async function loadSteps() {
   try {
     stepInfo = await api("/steps");
     $("stepHelp").innerHTML = stepInfo.map(s => `<li><b>${esc(s.label_vi)}</b>: ${esc(s.help_vi)}</li>`).join("");
+    const previewSteps = stepInfo.map((step, i) => ({name: step.name, secs: i < 2 ? 8 + i * 3 : i === 2 ? 19 : null,
+      progress: i === 2 ? 0.46 : undefined}));
+    $("stepPreview").innerHTML = renderSteps(2, previewSteps, false);
   } catch (e) { $("stepHelp").innerHTML = `<li class="bad">Không tải được danh sách bước: ${esc(e.message)}</li>`; }
 }
 
@@ -241,16 +256,35 @@ window.openViewer = async (id, lang) => {
 $("closeViewer").onclick = () => { $("viewer").hidden = true; };
 $("lineFilter").onchange = renderViewer;
 
-function renderSteps(steps, error) {
-  return `<div class="step-strip" role="list">${(steps || []).map(step => {
-    const info = stepInfo.find(s => s.name === step.name) || {label_vi: step.name};
-    const icon = {done: "✓", running: "●", pending: "○", failed: "!"}[step.state] || "○";
-    const meta = step.state === "done" ? fmtDuration(step.secs)
-      : step.state === "running" ? `${fmtDuration(step.secs)}${step.progress == null ? "" : ` · ${Math.round(step.progress * 100)}%`}`
-      : step.state === "failed" ? "Lỗi" : "Chờ";
-    const progress = step.state === "running" ? `<div class="step-progress" aria-label="Tiến độ bước"><i style="width:${Math.max(0, Math.min(100, Math.round((step.progress || 0) * 100)))}%"></i></div>` : "";
-    return `<div class="step ${esc(step.state)}" role="listitem" title="${step.state === "failed" ? esc(error || "Bước thất bại") : esc(info.help_vi || info.label_vi)}"><span class="step-title"><span aria-hidden="true">${icon}</span>${esc(info.label_vi)}</span><small class="step-meta">${meta}</small>${progress}</div>`;
-  }).join("")}</div>`;
+function renderSteps(activeStep, stepRows = [], hasError = false) {
+  const active = Math.max(0, Math.min(stepInfo.length, Number(activeStep) || 0));
+  const byName = new Map(stepRows.map(step => [step.name, step]));
+  const items = stepInfo.map((stage, i) => {
+    const completed = i < active, current = i === active, upcoming = i > active;
+    const failed = current && hasError;
+    const className = completed ? "is-complete" : failed ? "is-failed" : current ? "is-current" : upcoming ? "is-upcoming" : "";
+    const detail = byName.get(stage.name) || {};
+    const symbol = completed ? "✓" : String(i + 1);
+    const meta = completed ? fmtDuration(detail.secs)
+      : failed ? `Lỗi${detail.secs == null ? "" : ` · ${fmtDuration(detail.secs)}`}`
+      : current ? `${fmtDuration(detail.secs)}${detail.progress == null ? "" : ` · ${Math.round(detail.progress * 100)}%`}`
+      : "Chờ";
+    const progress = current && detail.progress != null
+      ? `<span class="step-progress" role="img" aria-label="Tiến độ ${Math.round(detail.progress * 100)} phần trăm"><i style="width:${Math.max(0, Math.min(100, Math.round(detail.progress * 100)))}%"></i></span>` : "";
+    return `<li class="step-item ${className}"${current ? ' aria-current="step"' : ""}>
+      <span class="step-head"><span class="step-icon" aria-hidden="true">${symbol}</span></span>
+      <span class="step-label">${esc(stage.label_vi)}</span>
+      <small class="step-meta">${meta}</small>${progress}
+    </li>`;
+  }).join("");
+  return `<div class="steps-viewport"><ol class="step-strip" aria-label="Các bước xử lý">${items}</ol></div>`;
+}
+
+function activeStepFor(stage) {
+  const activeName = {queued: "gate", gated: "asr", transcribed: "brief", briefed: "translate",
+    translated: "polish", polished: "retime"}[stage];
+  return activeName ? Math.max(0, stepInfo.findIndex(step => step.name === activeName))
+    : stage === "done" ? stepInfo.length : 0;
 }
 
 async function poll() {
@@ -258,12 +292,13 @@ async function poll() {
   try { rows = await api("/jobs"); } catch { return; }
   $("rows").innerHTML = rows.length ? rows.map(j => {
     const done = j.stage === "done";
+    const activeStep = activeStepFor(j.stage);
     const result = done ? `${j.cues ?? "?"} dòng${j.failed_lines ? `, <span class="bad">${j.failed_lines} lỗi</span>` : ""}` : "";
     return `<tr>
       <td>${j.id}</td>
       <td class="video" title="${esc(j.video)}">${esc(base(j.video))}</td>
       <td>${esc(LANG[j.lang] || j.lang)}</td>
-      <td class="steps-cell">${renderSteps(j.steps, j.error)}</td>
+      <td class="steps-cell">${renderSteps(activeStep, j.steps, Boolean(j.error))}</td>
       <td>${j.error ? `<span class="bad" title="${esc(j.error)}">Lỗi: ${esc(j.error.slice(0, 80))}</span>` : result || (!done ? `Còn ${fmt(j.eta_s)}` : `<span class="ok">Xong</span>`)}</td>
       <td class="actions">
         ${j.stage !== "queued" ? `<button onclick="openViewer(${j.id}, '${esc(j.lang)}')">Xem phụ đề</button>` : ""}
