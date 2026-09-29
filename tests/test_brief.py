@@ -124,3 +124,11 @@ def test_chat_routes_agy_brief_model_to_cloud_without_ollama_options(monkeypatch
     assert brief._chat(cfg, "Japanese dialogue", set(), json_mode=True, max_tokens=123) == "facts"
     assert calls[0][0] == "agy/gemini-test"
     assert calls[0][1][1]["content"] == "Japanese dialogue"
+
+
+def test_first_json_ignores_trailing_text():
+    from autosub.stages.brief import first_json
+    assert first_json('Here you go:\n{"summary": "s"}\n\nDone. {"x": 1}') == {"summary": "s"}
+    import pytest
+    with pytest.raises(ValueError):
+        first_json("no json here")

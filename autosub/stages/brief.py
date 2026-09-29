@@ -23,6 +23,14 @@ def cache_path(cfg, video):
     return p / f"{key}.json"
 
 
+def first_json(text):
+    """The first JSON object in text; agy --json-schema can append extra text after it ("Extra data")."""
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("no JSON object in brief output")
+    return json.JSONDecoder().raw_decode(text[start:])[0]
+
+
 def _content(raw):
     return re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I)
 
@@ -116,7 +124,7 @@ def make_brief(cfg, texts, used):
         if merged is None:
             raise ValueError("brief merge refused or unavailable")
         try:
-            data = json.loads(_content(merged))
+            data = first_json(_content(merged))
         except ValueError as e:  # cut off mid-string: ask again, shorter
             last = e
             continue
