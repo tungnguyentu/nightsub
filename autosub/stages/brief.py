@@ -88,7 +88,11 @@ def make_brief(cfg, texts, used):
                        '{"summary":"...","characters":[{"name_or_role":"...","gender":"...",'
                        '"age_hint":"..."}],"relationship":"...","setting":"...",'
                        '"vi_address":{"male_self":"...","male_to_female":"...",'
-                       '"female_self":"...","female_to_male":"..."}}. '
+                       '"female_self":"...","female_to_male":"..."},'
+                       '"addresses":[{"between":"<woman> & <man>","male_self":"...","male_to_female":"...",'
+                       '"female_self":"...","female_to_male":"..."}]}. '
+                       "addresses: one entry per man-woman pair who talk to each other (e.g. daughter-in-law & "
+                       "father-in-law -> con/bố, wife & husband -> em/anh). "
                        f"Keep it short ({limit}). "
                        "Each vi_address value must be ONE Vietnamese pronoun such as anh, em, chị, cô, chú, "
                        "ông, bà, cháu, tôi, mình, sếp, chồng, vợ, chosen from the characters' relationship and "
@@ -124,7 +128,8 @@ def normalize(data):
     chars = [c for c in (chars if isinstance(chars, list) else [chars]) if isinstance(c, dict)]
     out = {"summary": _text(data.get("summary"))[:MAX_CHARS], "characters": chars,
            "relationship": _text(data.get("relationship")), "setting": _text(data.get("setting")),
-           "vi_address": data.get("vi_address") if isinstance(data.get("vi_address"), dict) else {}}
+           "vi_address": data.get("vi_address") if isinstance(data.get("vi_address"), dict) else {},
+           "addresses": [a for a in (data.get("addresses") or []) if isinstance(a, dict)]}
     if not (out["summary"] or out["relationship"]):
         raise ValueError("brief has no summary or relationship")
     return out

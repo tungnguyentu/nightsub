@@ -494,3 +494,26 @@ def test_kinship_pair_is_a_scoped_hint_and_keeps_anh_em_allowed():
     assert "Giữ nguyên suốt video" not in rule
     assert {"bố", "con", "anh", "em"} <= tr.allowed_pronouns("vi", b)
     assert tr.NO_ADDED_PRONOUNS in rule
+
+
+def test_per_relationship_pairs_are_listed_not_forced_whole_video():
+    brief = {"characters": [{"name_or_role": "Nao", "gender": "female"}, {"name_or_role": "Father-in-law", "gender": "male"},
+                            {"name_or_role": "Shūji", "gender": "male"}],
+             "vi_address": {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"},
+             "addresses": [
+                 {"between": "Nao & Father-in-law", "male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"},
+                 {"between": "Nao & Shūji", "male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"},
+                 {"between": "bad", "male_self": "Speaker 1"}]}
+    rule = tr.address_rule({}, "vi", brief)
+    assert "Nao & Father-in-law" in rule and "Nao & Shūji" in rule and "bad" not in rule
+    assert "Giữ nguyên suốt video" not in rule
+    assert {"bố", "con", "anh", "em"} <= tr.allowed_pronouns("vi", brief)
+
+
+def test_single_pair_with_several_men_is_only_a_scoped_hint():
+    brief = {"characters": [{"gender": "male"}, {"gender": "male"}, {"gender": "female"}],
+             "vi_address": {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}}
+    rule = tr.address_rule({}, "vi", brief)
+    assert "Giữ nguyên suốt video" not in rule and "CHỈ khi hai người đó nói" in rule
+    one_man = {**brief, "characters": [{"gender": "male"}, {"gender": "female"}]}
+    assert "Giữ nguyên suốt video" in tr.address_rule({}, "vi", one_man)

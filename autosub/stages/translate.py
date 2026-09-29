@@ -212,7 +212,10 @@ def allowed_pronouns(lang, brief=None):
     if lang != "vi":
         return None
     allowed = set((address_pair(brief) or DEFAULT_PAIR).values())
-    if isinstance(brief, dict) and brief.get("address_source") == "kinship":
+    for _, pair in relationship_pairs(brief):
+        allowed |= set(pair.values())
+    if isinstance(brief, dict) and (brief.get("address_source") == "kinship" or relationship_pairs(brief)
+                                    or len(male_characters(brief)) > 1):
         allowed |= set(DEFAULT_PAIR.values())  # other characters may use anh/em
     return allowed
 
@@ -227,8 +230,32 @@ NO_ADDED_PRONOUNS = (" Không tự thêm đại từ hay từ xưng hô khi câu
                      "dịch ngắn, không gắn 'bố', 'con', 'anh', 'em' vào cuối câu.")
 
 
+def relationship_pairs(brief):
+    """Valid per-relationship pairs from the brief: [("Nao & Father-in-law", pair), ...]."""
+    out = []
+    for a in (brief.get("addresses") or []) if isinstance(brief, dict) else []:
+        pair = address_pair({"vi_address": a}) if isinstance(a, dict) else None
+        if pair:
+            out.append((str(a.get("between") or "?")[:60], pair))
+    return out
+
+
+def male_characters(brief):
+    chars = brief.get("characters") if isinstance(brief, dict) else None
+    return [c for c in chars or [] if isinstance(c, dict) and str(c.get("gender", "")).lower().startswith("m")]
+
+
 def address_rule(cfg, lang, brief=None):
+    rels = relationship_pairs(brief) if lang == "vi" else []
+    if rels:  # one pair per relationship: the model picks by who is talking to whom
+        parts = [f"{who}: nam xưng '{p['male_self']}', gọi nữ là '{p['male_to_female']}', nữ xưng "
+                 f"'{p['female_self']}', gọi nam là '{p['female_to_male']}'" for who, p in rels]
+        return (" Xưng hô theo từng cặp nhân vật (chọn theo người đang nói với ai trong cảnh): " + "; ".join(parts)
+                + ". Người khác: chọn theo ngữ cảnh, mặc định anh/em." + KINSHIP_NOTE + NO_ADDED_PRONOUNS)
     pair = address_pair(brief) if lang == "vi" else None
+    if pair and len(male_characters(brief)) > 1:  # one pair but several men: scoped, not whole-video
+        brief = {**brief, "address_source": "kinship",
+                 "address_term": brief.get("address_term") or "người tương ứng trong bối cảnh"}
     if pair and isinstance(brief, dict) and brief.get("address_source") == "kinship":
         term = brief.get("address_term") or "?"
         return (f" Gợi ý xưng hô: trong phim có người được gọi trực tiếp là '{term}'. CHỈ khi hai người đó nói "
