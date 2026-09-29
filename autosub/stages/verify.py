@@ -62,10 +62,16 @@ def name_hints(brief):
     return "、".join(names[:8])
 
 
+def too_short(text, cfg):
+    """Interjections (64% of HMN-904's lines) are skipped; re-hearing them cost most of a 75-minute verify pass."""
+    return len(re.sub(r"[\W_]+", "", text or "")) <= cfg.get("verify_min_chars", 4)
+
+
 def transcribe_segment(model, audio, segment, cfg, prompt=None):
     start, end = float(segment["start"]), float(segment["end"])
     clip = audio[max(0, int(start * SR)):max(0, int(end * SR))]
-    kwargs = {"language": cfg["asr_language"], "condition_on_previous_text": False}
+    kwargs = {"language": cfg["asr_language"], "condition_on_previous_text": False,
+              "beam_size": cfg.get("verify_beam", 1)}  # a disagreement check, not the final transcript: greedy is enough
     if prompt:
         kwargs["initial_prompt"] = prompt
     try:
@@ -73,7 +79,7 @@ def transcribe_segment(model, audio, segment, cfg, prompt=None):
     except RuntimeError as exc:
         if "out of memory" not in str(exc).lower():
             raise
-        parts = list(model.transcribe(clip, beam_size=1, **kwargs)[0])
+        parts = list(model.transcribe(clip, **{**kwargs, "beam_size": 1})[0])
     return "".join(part.text.strip() for part in parts).strip()
 
 
@@ -175,6 +181,8 @@ def process(cfg, db, job, d, model):
 
     with partial.open("a") as checkpoint:
         for i, segment in enumerate(segs):
+            if i not in second and too_short(segment["text"], cfg):
+                second[i] = segment["text"]  # うん / あっ / はい: a second hearing cannot change anything useful
             if i not in second:
                 second[i] = transcribe_segment(model, audio, segment, cfg, prompt)
                 checkpoint.write(json.dumps({"key": key, "phase": "asr", "i": i,

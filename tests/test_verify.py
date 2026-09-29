@@ -60,7 +60,7 @@ def test_agreement_keeps_kotoba_and_name_hints_reach_whisper(tmp_path, monkeypat
     result = json.loads((d / "segments.json").read_text())[0]
     assert result["text"] == "こんにちは。"
     assert "verified" not in result and "asr_alt" not in result
-    assert model.calls[0][1] == {"language": "ja", "condition_on_previous_text": False,
+    assert model.calls[0][1] == {"language": "ja", "condition_on_previous_text": False, "beam_size": 1,
                                  "initial_prompt": "葵、先生"}
 
 
@@ -192,3 +192,17 @@ def test_cloud_arbitration_batches_run_concurrently(tmp_path, monkeypatch):
 
     assert peak == 2
     assert all(seg["verified"] == "arbitrated" for seg in json.loads((d / "segments.json").read_text()))
+
+
+def test_short_interjections_are_not_re_heard_and_check_is_greedy():
+    from autosub.stages import verify
+    assert verify.too_short("うん", {}) and verify.too_short("あっ!", {}) and not verify.too_short("大声出しても", {})
+    seen = {}
+
+    class M:
+        def transcribe(self, clip, **kw):
+            seen.update(kw)
+            return iter([]), None
+    import numpy as np
+    verify.transcribe_segment(M(), np.zeros(16000, np.float32), {"start": 0, "end": 1}, {"asr_language": "ja"})
+    assert seen["beam_size"] == 1
