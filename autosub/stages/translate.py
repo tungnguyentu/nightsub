@@ -60,13 +60,20 @@ def allowed_pronouns(lang, brief=None):
     return set((address_pair(brief) or DEFAULT_PAIR).values()) if lang == "vi" else None
 
 
+# The pronoun rule must not rewrite kinship/role words the source actually says (お父さん is "bố", not "anh").
+KINSHIP_NOTE = (" Quy tắc xưng hô chỉ áp dụng cho đại từ nhân xưng (tôi, bạn, anh, em...). Từ chỉ quan hệ hoặc "
+                "vai trò có trong câu gốc thì dịch đúng nghĩa: お父さん/父 → bố, お母さん/母 → mẹ, 先生 → thầy/cô, "
+                "社長 → giám đốc, 先輩 → tiền bối, 奥さん → vợ/chị nhà.")
+
+
 def address_rule(cfg, lang, brief=None):
     pair = address_pair(brief) if lang == "vi" else None
     if pair:
         return (f" Xưng hô theo bối cảnh: nam xưng '{pair['male_self']}', gọi nữ là '{pair['male_to_female']}'; "
-                f"nữ xưng '{pair['female_self']}', gọi nam là '{pair['female_to_male']}'. Giữ nguyên suốt video.")
+                f"nữ xưng '{pair['female_self']}', gọi nam là '{pair['female_to_male']}'. Giữ nguyên suốt video."
+                + KINSHIP_NOTE)
     rule = cfg.get("address", {}).get(lang)
-    return f" {rule}" if rule else ""
+    return (f" {rule}" + (KINSHIP_NOTE if lang == "vi" else "")) if rule else ""
 
 
 def prompt(lines, ctx, lang, cfg=None, *, previous_sources=None, following=None, brief=None):
@@ -134,6 +141,43 @@ def with_fallback(cfg, lines, ctx, lang, used, messages=None, fallback_stats=Non
     return None
 
 
+def _ask_cloud(cfg, lines, lang, used, messages):
+    """Primary cloud model only; None on refusal/error (no local fallback here)."""
+    model = cfg["models"][lang]
+    try:
+        out = ask(cfg, model, lines, [], lang, used, messages)
+    except OSError:
+        return None
+    if is_refusal(lines, out, lang):
+        return None
+    with SERVED_LOCK:
+        SERVED[model] += 1
+    return out
+
+
+def _cloud_bisect(cfg, sources, texts, start, end, lang, used, brief, fallback_stats):
+    """Translate texts[start:end] with the cloud model; on refusal split in half and retry, so only the
+    lines the cloud refuses even on their own go to the local fallback. -> (translations, failed)."""
+    prev_n, lookahead = cfg.get("context_lines", 0), cfg.get("lookahead_lines", 4)
+    win = texts[start:end]
+    msgs = prompt(win, [], lang, cfg, previous_sources=sources[max(0, start - prev_n):start],
+                  following=sources[end:end + lookahead], brief=brief)
+    res = _ask_cloud(cfg, win, lang, used, msgs)
+    if res is not None:
+        return res, 0
+    if len(win) > 1:
+        mid = start + len(win) // 2
+        a, fa = _cloud_bisect(cfg, sources, texts, start, mid, lang, used, brief, fallback_stats)
+        b, fb = _cloud_bisect(cfg, sources, texts, mid, end, lang, used, brief, fallback_stats)
+        return a + b, fa + fb
+    if fallback_stats is not None:  # one line the cloud refused on its own: local model
+        with SERVED_LOCK:
+            fallback_stats["cloud_fallbacks"] += 1
+    local = {**cfg, "models": {**cfg["models"], lang: cfg["fallback_model"]}}
+    one = with_fallback(local, win, [], lang, used, msgs)
+    return (one, 0) if one else ([UNTRANSLATED], 1)
+
+
 def _translate_window(cfg, win, lang, used, *, ctx, previous_sources, following, brief, fallback_stats=None):
     messages = prompt(win, ctx, lang, cfg, previous_sources=previous_sources, following=following, brief=brief)
     res = with_fallback(cfg, win, ctx, lang, used, messages, fallback_stats)
@@ -172,10 +216,7 @@ def translate_texts(cfg, texts, lang, used, progress=lambda f: None, *, sources=
         results = [None] * len(windows)
 
         def translate(index, i, win):
-            previous = sources[max(0, i - prev_n):i] if two_sided and prev_n else []
-            following = sources[i + len(win):i + len(win) + lookahead]
-            res, errors = _translate_window(cfg, win, lang, used, ctx=[], previous_sources=previous,
-                                            following=following, brief=brief, fallback_stats=fallback_stats)
+            res, errors = _cloud_bisect(cfg, sources, texts, i, i + len(win), lang, used, brief, fallback_stats)
             return index, res, errors
 
         pool = ThreadPoolExecutor(max_workers=max(1, int(cfg.get("cloud_parallel", 4))))

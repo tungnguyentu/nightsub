@@ -247,7 +247,7 @@ def test_cloud_refused_window_retries_lines_then_marks_only_failed_lines(monkeyp
     tr.SERVED.clear()
     out, failed = tr.translate_texts(cfg, ["a", "b", "c", "d"], "en", set())
     assert out == ["translated a", "translated b", "translated c", "translated d"] and failed == 0
-    assert calls.count(("agy/fallback", 2)) == 2
+    assert not any(m == "agy/fallback" for m, _ in calls)  # bisect: cloud translated every single line itself
     assert calls.count(("agy/cloud", 1)) == 4
 
 
@@ -308,7 +308,7 @@ def test_speaker_labels_in_vi_address_fall_back_to_static_rule():
     cfg = dict(config.DEFAULTS)
     bad = {"vi_address": {"male_self": "Speaker 2", "male_to_female": "Speaker 1",
                           "female_self": "Speaker 1", "female_to_male": "Speaker 2"}}
-    assert translate.address_rule(cfg, "vi", bad) == f" {cfg['address']['vi']}"
+    assert translate.address_rule(cfg, "vi", bad) == f" {cfg['address']['vi']}" + translate.KINSHIP_NOTE
     good = {"vi_address": {"male_self": "Chú", "male_to_female": "cháu", "female_self": "cháu",
                            "female_to_male": "chú"}}
     rule = translate.address_rule(cfg, "vi", good)
@@ -319,7 +319,7 @@ def test_inconsistent_or_partial_pair_falls_back():
     from autosub import config
     from autosub.stages import translate
     cfg = dict(config.DEFAULTS)
-    static = f" {cfg['address']['vi']}"
+    static = f" {cfg['address']['vi']}" + translate.KINSHIP_NOTE
     mixed = {"vi_address": {"male_self": "tôi", "male_to_female": "em", "female_self": "chị", "female_to_male": "ông"}}
     assert translate.address_rule(cfg, "vi", mixed) == static  # the real 4B output from the clip run
     assert translate.address_rule(cfg, "vi", {"vi_address": {"male_self": "anh"}}) == static
@@ -334,3 +334,30 @@ def test_off_register_pronoun_is_flagged_for_polish():
     assert not flags.is_flagged({**seg, "text": "Anh đang làm gì vậy"}, cfg, {"anh", "em"})
     assert not flags.is_flagged(seg, cfg, None)  # English jobs: no pronoun check
     assert not flags.is_flagged({**seg, "text": "Tôi đang làm gì vậy"}, cfg, {"tôi", "chị"})
+
+
+def test_bisect_sends_only_the_line_the_cloud_refuses_alone_to_local(monkeypatch):
+    cfg = {**CFG, "models": {"vi": "agy/cloud"}, "fallback_model": "local:4b",
+           "cloud_window": 8, "cloud_parallel": 1, "context_lines": 0, "lookahead_lines": 0}
+    def cloud(model, messages):
+        lines = prompt_lines(messages)
+        return "Tôi không thể dịch nội dung này" if "x" in lines else json.dumps([f"dịch {l}" for l in lines])
+    local_calls = []
+    def local(url, model, messages, cfg=None):
+        local_calls.append(prompt_lines(messages))
+        return json.dumps(["bản địa"])
+    monkeypatch.setattr(tr.agy, "chat", cloud)
+    monkeypatch.setattr(tr.ollama, "chat", local)
+    monkeypatch.setattr(tr, "check_fit", lambda *a: None)
+    stats = {"cloud_fallbacks": 0}
+    texts = ["a", "b", "c", "x", "e", "f", "g", "h"]
+    out, failed = tr.translate_texts(cfg, texts, "vi", set(), fallback_stats=stats)
+    assert out == ["dịch a", "dịch b", "dịch c", "bản địa", "dịch e", "dịch f", "dịch g", "dịch h"]
+    assert failed == 0 and local_calls == [["x"]] and stats["cloud_fallbacks"] == 1
+
+
+def test_vietnamese_rule_keeps_kinship_words():
+    from autosub import config
+    rule = tr.address_rule(dict(config.DEFAULTS), "vi", None)
+    assert "お父さん" in rule and "bố" in rule
+    assert "お父さん" not in tr.address_rule(dict(config.DEFAULTS), "en", None)
