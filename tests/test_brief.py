@@ -116,7 +116,7 @@ def test_truncated_merge_is_retried_shorter(monkeypatch):
 def test_chat_routes_agy_brief_model_to_cloud_without_ollama_options(monkeypatch):
     from autosub.stages import brief
     calls = []
-    monkeypatch.setattr(brief.agy, "chat", lambda model, messages: calls.append((model, messages)) or "facts")
+    monkeypatch.setattr(brief.agy, "chat", lambda model, messages, **kw: calls.append((model, messages)) or "facts")
     monkeypatch.setattr(brief.ollama, "chat", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected local call")))
     cfg = {"brief_model": "agy/gemini-test", "models": {"vi": "local"}, "fallback_model": "local",
            "ollama_url": "http://localhost"}

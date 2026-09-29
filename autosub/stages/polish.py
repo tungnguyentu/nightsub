@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 from .. import agy, config, jobs
-from ..flags import is_flagged
+from ..flags import is_flagged, wrong_pronoun
 from .translate import LANGS, UNTRANSLATED, address_rule, allowed_pronouns, with_kinship, brief_summary, unload_all, with_fallback
 
 
@@ -18,6 +18,14 @@ def rewrite_prompt(segs, i, lang, cfg=None, brief=None):
     if summary:
         system += f" Scene brief (context only): {summary}"
     return [{"role": "system", "content": system}, {"role": "user", "content": ctx}]
+
+
+def keep_rewrite(out, old, allowed):
+    """Accept a rewrite only if it changed the line and did not bring in an off-register pronoun
+    (HMN-904: 17 of 21 mày/tao lines came from polish rewrites)."""
+    if not out or out[0] == old:
+        return False
+    return allowed is None or not wrong_pronoun(out[0], allowed)
 
 
 def polish(cfg, segs, lang, used, progress=lambda f: None, brief=None):
@@ -35,7 +43,7 @@ def polish(cfg, segs, lang, used, progress=lambda f: None, brief=None):
             segs[i]["polished"] = False
             out = with_fallback(cfg, [segs[i]["src"]], None, lang, used,
                                 rewrite_prompt(segs, i, lang, cfg, brief))
-            if out and out[0] != old:
+            if keep_rewrite(out, old, allowed):
                 segs[i]["text"] = out[0]
                 segs[i]["polished"] = True
             progress((n + 1) / len(idx))
@@ -65,7 +73,7 @@ def polish(cfg, segs, lang, used, progress=lambda f: None, brief=None):
     try:
         for finished, future in enumerate(as_completed(futures), start=1):
             i, old, out = future.result()
-            if out and out[0] != old:
+            if keep_rewrite(out, old, allowed):
                 segs[i]["text"] = out[0]
                 segs[i]["polished"] = True
             report_progress(finished / len(idx))

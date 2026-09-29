@@ -27,6 +27,21 @@ def _content(raw):
     return re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I)
 
 
+_PAIR = {"type": "object", "required": ["male_self", "male_to_female", "female_self", "female_to_male"],
+         "properties": {k: {"type": "string"} for k in ("male_self", "male_to_female", "female_self", "female_to_male")}}
+# agy enforces this on the final answer; without it Gemini skipped `addresses` on HMN-904.
+BRIEF_SCHEMA = {"type": "object", "required": ["summary", "characters", "relationship", "setting", "addresses"],
+                "properties": {"summary": {"type": "string"}, "relationship": {"type": "string"},
+                               "setting": {"type": "string"},
+                               "characters": {"type": "array", "items": {"type": "object", "properties": {
+                                   "name_or_role": {"type": "string"}, "gender": {"type": "string"},
+                                   "age_hint": {"type": "string"}}}},
+                               "vi_address": _PAIR,
+                               "addresses": {"type": "array", "items": {**_PAIR, "required": ["between", *_PAIR["required"]],
+                                                                        "properties": {**_PAIR["properties"],
+                                                                                       "between": {"type": "string"}}}}}}
+
+
 def _chat(cfg, prompt, used, json_mode=False, max_tokens=1024):
     primary = cfg.get("brief_model") or cfg["models"]["vi"]
     for model in dict.fromkeys((primary, cfg["fallback_model"])):
@@ -36,7 +51,7 @@ def _chat(cfg, prompt, used, json_mode=False, max_tokens=1024):
                 {"role": "user", "content": prompt},
             ]
             if agy.is_agy(model):
-                out = agy.chat(model, messages)
+                out = agy.chat(model, messages, json_schema=BRIEF_SCHEMA if json_mode else None)
             else:
                 out = ollama.chat(cfg["ollama_url"], model, messages, cfg,
                                   json_mode=json_mode, max_tokens=max_tokens)

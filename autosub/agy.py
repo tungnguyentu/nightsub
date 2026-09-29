@@ -23,13 +23,15 @@ def binary():
     return shutil.which("agy") or next((str(p) for p in [Path.home() / ".local/bin/agy"] if p.exists()), None)
 
 
-def chat(model, messages, timeout=180):
+def chat(model, messages, timeout=180, json_schema=None):
     prompt = "\n\n".join(m["content"] for m in messages)  # --print takes one message
     with tempfile.TemporaryDirectory() as empty:  # empty workspace, no auto-approved tools: it can only answer
         started = time.perf_counter()
         try:
             p = subprocess.run([binary() or "agy", "--output-format", "json", "--disable-slash-commands",
-                                "--model", model[len(PREFIX):], f"--print-timeout={timeout}s", f"--print={prompt}"],
+                                "--model", model[len(PREFIX):], f"--print-timeout={timeout}s",
+                                *([f"--json-schema={json.dumps(json_schema)}"] if json_schema else []),
+                                f"--print={prompt}"],
                                cwd=empty, capture_output=True, text=True, timeout=timeout + 30)
         except subprocess.TimeoutExpired:  # OSError = the refusal/fallback path in translate
             raise OSError(f"agy timed out after {timeout}s") from None

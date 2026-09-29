@@ -130,3 +130,27 @@ def test_refused_cloud_rewrite_keeps_text_and_polished_false(monkeypatch):
 
     assert segs[0]["text"] == "old-0"
     assert segs[0]["polished"] is False
+
+
+def test_rewrite_that_brings_in_off_register_pronoun_is_rejected():
+    from autosub.stages.polish import keep_rewrite
+    allowed = {"bố", "con", "anh", "em"}
+    assert not keep_rewrite(["Mày làm gì đấy"], "Anh làm gì đấy", allowed)
+    assert keep_rewrite(["Anh đang làm gì vậy"], "Anh làm gì đấy", allowed)
+    assert not keep_rewrite(["Anh làm gì đấy"], "Anh làm gì đấy", allowed)  # unchanged
+    assert keep_rewrite(["I love you"], "x", None)  # English job: no pronoun rule
+
+
+def test_agy_json_schema_is_passed(monkeypatch):
+    import json
+    import subprocess
+    from autosub import agy
+    seen = {}
+    def run(cmd, **kw):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, json.dumps({"status": "SUCCESS", "response": "{}"}), "")
+    monkeypatch.setattr(agy.subprocess, "run", run)
+    agy.chat("agy/m", [{"content": "x"}], json_schema={"type": "object"})
+    assert any(a.startswith("--json-schema=") for a in seen["cmd"])
+    agy.chat("agy/m", [{"content": "x"}])
+    assert not any(a.startswith("--json-schema=") for a in seen["cmd"])
