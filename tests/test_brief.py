@@ -54,3 +54,60 @@ def test_400_lines_use_three_chunks_and_merge(tmp_path, monkeypatch):
     monkeypatch.setattr(brief, "unload_all", lambda cfg, used: None)
     brief.run(cfg, db, batch)
     assert len(calls) == 4 and sum(p.startswith("Extract") for p in calls) == 3
+
+
+def test_normalize_coerces_wrong_types_instead_of_discarding():
+    from autosub.stages.brief import normalize
+    b = normalize({"summary": ["Nao sống cùng bố chồng", "chồng đi làm xa"], "relationship": {"Nao": "con dâu"},
+                   "characters": {"name_or_role": "Nao", "gender": "F"}, "vi_address": None})
+    assert "bố chồng" in b["summary"] and "con dâu" in b["relationship"]
+    assert b["characters"] == [{"name_or_role": "Nao", "gender": "F"}] and b["vi_address"] == {} and b["setting"] == ""
+
+
+def test_normalize_rejects_an_empty_brief():
+    import pytest
+    from autosub.stages.brief import normalize
+    with pytest.raises(ValueError):
+        normalize({"characters": []})
+
+
+def test_long_notes_are_condensed_before_the_merge(monkeypatch):
+    from autosub.stages import brief
+    calls = []
+    def chat(cfg, prompt, used, json_mode=False, max_tokens=1024):
+        calls.append(prompt[:9])
+        return "- short fact"
+    monkeypatch.setattr(brief, "_chat", chat)
+    out = brief.condense({}, ["x" * 900] * 20, set())
+    assert len("\n".join(out)) <= brief.MAX_FACT_CHARS and all(c == "Condense " for c in calls)
+    assert len(calls) == 4  # 20 notes in groups of 6 -> 4 condense calls, then they fit
+
+
+def test_one_refused_chunk_does_not_discard_the_brief(monkeypatch):
+    import json
+    from autosub.stages import brief
+    n = {"i": 0}
+    def chat(cfg, prompt, used, json_mode=False, max_tokens=1024):
+        n["i"] += 1
+        if json_mode:
+            return json.dumps({"summary": "s", "relationship": "r", "characters": [], "setting": "", "vi_address": {}})
+        return None if n["i"] == 2 else "- fact"
+    monkeypatch.setattr(brief, "_chat", chat)
+    b = brief.make_brief({}, ["あ"] * (brief.CHUNK_SIZE * 3), set())
+    assert b["summary"] == "s"
+
+
+def test_truncated_merge_is_retried_shorter(monkeypatch):
+    import json
+    from autosub.stages import brief
+    merges = []
+    def chat(cfg, prompt, used, json_mode=False, max_tokens=1024):
+        if not json_mode:
+            return "- fact"
+        merges.append(prompt)
+        if len(merges) == 1:
+            return '{"summary": "cut off mid'
+        return json.dumps({"summary": "s", "relationship": "r", "characters": [], "setting": "", "vi_address": {}})
+    monkeypatch.setattr(brief, "_chat", chat)
+    assert brief.make_brief({}, ["あ"] * 10, set())["summary"] == "s"
+    assert len(merges) == 2 and "1 sentence" in merges[1]
