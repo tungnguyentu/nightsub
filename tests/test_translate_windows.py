@@ -461,3 +461,18 @@ def test_ollama_json_mode_sets_format(monkeypatch):
     assert sent.get("format") == "json" or True  # dict reused; check a fresh call instead
     sent.clear(); ollama.chat("u", "m", [], {})
     assert "format" not in sent
+
+
+def test_gpu_split_models_skip_forced_offload_and_fit_check(monkeypatch):
+    from autosub import ollama
+    sent = {}
+    monkeypatch.setattr(ollama, "_req", lambda url, path, body=None, timeout=0: sent.update(body) or {"message": {"content": "[]"}})
+    ollama.chat("u", "gemma3:12b", [], {"gpu_split_models": ["gemma3:12b"]})
+    assert "num_gpu" not in sent["options"]
+    sent.clear(); ollama.chat("u", "gemma3:4b", [], {"gpu_split_models": ["gemma3:12b"]})
+    assert sent["options"]["num_gpu"] == 99
+    monkeypatch.setattr(tr.ollama, "ps", lambda url: [{"name": "gemma3:12b", "size": 100, "size_vram": 22}])
+    tr.check_fit({"ollama_url": "", "gpu_split_models": ["gemma3:12b"]}, "gemma3:12b")  # no raise
+    import pytest
+    with pytest.raises(tr.GpuFitError):
+        tr.check_fit({"ollama_url": "", "gpu_split_models": []}, "gemma3:12b")

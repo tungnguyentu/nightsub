@@ -24,11 +24,11 @@ def chat(url, model, messages, cfg=None, json_mode=False):
     body = {"model": model, "messages": messages, "stream": False, "think": False}
     if json_mode:  # ollama constrains decoding to valid JSON
         body["format"] = "json"
-    out = _req(url, "/api/chat", {**body,
-                                  "options": {"temperature": 0.3, "num_predict": 1024,  # cap runaway repetition loops
-                                              "num_ctx": (cfg or {}).get("llm_ctx", 4096),
-                                              "num_gpu": 99}},  # all layers on GPU; ollama's estimate is too cautious on 6 GB
-               timeout=180)
+    options = {"temperature": 0.3, "num_predict": 1024,  # cap runaway repetition loops
+               "num_ctx": (cfg or {}).get("llm_ctx", 4096)}
+    if model not in (cfg or {}).get("gpu_split_models", []):
+        options["num_gpu"] = 99  # all layers on GPU; ollama's estimate is too cautious on 6 GB
+    out = _req(url, "/api/chat", {**body, "options": options}, timeout=600 if "num_gpu" not in options else 180)
     # Qwen3-style models may emit a thinking block; drop it.
     return re.sub(r"<think>.*?</think>", "", out["message"]["content"], flags=re.S).strip()
 

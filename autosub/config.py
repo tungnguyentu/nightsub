@@ -11,6 +11,9 @@ DEFAULTS = {
     "models": {"en": "huihui_ai/qwen3-abliterated:8b", "vi": "gemma3:4b"},
     "fallback_model": "gemma3:4b",  # fits a 6 GB GPU fully; the 8B options do not
     "brief_model": None,  # defaults to the Vietnamese model so EN and VI jobs share one scene brief
+    # Models allowed to run split between GPU and CPU (no num_gpu 99, no min_gpu_share check), e.g. a 12B
+    # fallback that only sees the few lines the cloud refuses. Slower (~5x on a 6 GB card), never silent.
+    "gpu_split_models": [],
     "min_gpu_share": 0.9,  # translate/polish fail if less of the model than this is on GPU (R9)
     "pivot": {},  # e.g. {"vi": "en"} to go JA -> en -> vi; measured worse with qwen3-4b (English leaks through)
     "asr_model": "kotoba-tech/kotoba-whisper-v2.0-faster",  # JA-tuned large-v3 distil: 2.6x faster, more lines caught

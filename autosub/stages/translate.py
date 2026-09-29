@@ -239,6 +239,8 @@ def prompt(lines, ctx, lang, cfg=None, *, previous_sources=None, following=None,
 
 
 def check_fit(cfg, model):
+    if model in cfg.get("gpu_split_models", []):  # opted in to a GPU/CPU split (bigger, slower fallback model)
+        return
     for m in ollama.ps(cfg["ollama_url"]):
         if m["name"] in (model, f"{model}:latest") and m.get("size_vram", 0) < cfg.get("min_gpu_share", 0.9) * m.get("size", 0):  # a few % on CPU is fine
             raise GpuFitError(f"model did not fit in GPU memory: {model} "
