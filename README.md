@@ -74,7 +74,7 @@ Keys you are most likely to touch:
 | Key | Default | Meaning |
 |---|---|---|
 | `models.en`, `models.vi` | qwen3 8B / gemma3 4B | Translation model per language. 8B models do not fit fully on a 6 GB GPU |
-| `fallback_model` | `dolphin3:8b` | Second try for refused / broken windows |
+| `fallback_model` | `gemma3:4b` | Second try for refused / broken windows (and lines the cloud refuses) |
 | `asr_model` | `kotoba-tech/kotoba-whisper-v2.0-faster` | Japanese-tuned Whisper; `large-v3` also works |
 | `asr_language` | `ja` | Source language; `None` auto-detects per span (unreliable on short lines) |
 | `address.vi` | anh/em rule | Vietnamese pronoun rule used when the scene brief has no consistent pair |
