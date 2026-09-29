@@ -361,3 +361,36 @@ def test_vietnamese_rule_keeps_kinship_words():
     rule = tr.address_rule(dict(config.DEFAULTS), "vi", None)
     assert "お父さん" in rule and "bố" in rule
     assert "お父さん" not in tr.address_rule(dict(config.DEFAULTS), "en", None)
+
+
+def test_father_vocatives_pick_bo_con_when_brief_has_no_pair():
+    segs = [{"text": "父さんリビングで待っていてください", "gender": "F"},
+            {"text": "今日はお父さんが好きな味噌煮です", "gender": "F"},
+            {"text": "お父さん、お茶です", "gender": "F"},
+            {"text": "なおさんが作るやつは", "gender": "M"}]
+    b = tr.with_kinship({"skipped": "JSONDecodeError"}, segs)
+    assert tr.address_pair(b) == {"male_self": "bố", "male_to_female": "con", "female_self": "con",
+                                  "female_to_male": "bố"}
+    assert "'bố'" in tr.address_rule({}, "vi", b)
+
+
+def test_kinship_needs_enough_hits_and_never_overrides_a_valid_brief_pair():
+    few = [{"text": "お父さん", "gender": "F"}]
+    assert tr.address_pair(tr.with_kinship(None, few)) is None  # 1 hit: keep the default rule
+    good = {"vi_address": {"male_self": "chú", "male_to_female": "cháu", "female_self": "cháu", "female_to_male": "chú"}}
+    many = [{"text": "お父さん", "gender": "F"}] * 5
+    assert tr.address_pair(tr.with_kinship(good, many))["male_self"] == "chú"
+    male_only = [{"text": "父さん", "gender": "M"}] * 5  # the man saying it (about his own father) doesn't count
+    assert tr.address_pair(tr.with_kinship(None, male_only)) is None
+
+
+def test_ollama_json_mode_sets_format(monkeypatch):
+    from autosub import ollama
+    sent = {}
+    monkeypatch.setattr(ollama, "_req", lambda url, path, body=None, timeout=0: sent.update(body) or {"message": {"content": "{}"}})
+    ollama.chat("u", "m", [], {}, json_mode=True)
+    assert sent["format"] == "json"
+    ollama.chat("u", "m", [], {})
+    assert sent.get("format") == "json" or True  # dict reused; check a fresh call instead
+    sent.clear(); ollama.chat("u", "m", [], {})
+    assert "format" not in sent

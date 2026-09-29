@@ -27,14 +27,14 @@ def _content(raw):
     return re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.I)
 
 
-def _chat(cfg, prompt, used):
+def _chat(cfg, prompt, used, json_mode=False):
     primary = cfg.get("brief_model") or cfg["models"]["vi"]
     for model in dict.fromkeys((primary, cfg["fallback_model"])):
         try:
             out = ollama.chat(cfg["ollama_url"], model, [
                 {"role": "system", "content": "Summarize the Japanese dialogue faithfully. Do not invent facts. /no_think"},
                 {"role": "user", "content": prompt},
-            ], cfg)
+            ], cfg, json_mode=json_mode)
         except OSError:
             continue
         used.add(model)
@@ -62,7 +62,7 @@ def make_brief(cfg, texts, used):
                    '"female_self":"...","female_to_male":"..."}}. '
                    "Each vi_address value must be ONE Vietnamese pronoun such as anh, em, chị, cô, chú, "
                    "ông, bà, cháu, tôi, mình, sếp, chồng, vợ, chosen from the characters' relationship and ages; "
-                   "never a speaker label. Use null for unknown address fields; summary must be concise. Facts:\n" + "\n".join(facts), used)
+                   "never a speaker label. Use null for unknown address fields; summary must be concise. Facts:\n" + "\n".join(facts), used, json_mode=True)
     if merged is None:
         raise ValueError("brief merge refused or unavailable")
     data = json.loads(_content(merged))

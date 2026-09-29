@@ -3,7 +3,7 @@ import json
 
 from .. import config, jobs
 from ..flags import is_flagged
-from .translate import LANGS, UNTRANSLATED, address_rule, allowed_pronouns, brief_summary, unload_all, with_fallback
+from .translate import LANGS, UNTRANSLATED, address_rule, allowed_pronouns, with_kinship, brief_summary, unload_all, with_fallback
 
 
 def rewrite_prompt(segs, i, lang, cfg=None, brief=None):
@@ -44,6 +44,7 @@ def run(cfg, db, batch):
                 d = config.job_dir(cfg, job["id"])
                 segs = json.loads((d / "translated.json").read_text())
                 brief = json.loads((d / "brief.json").read_text()) if (d / "brief.json").exists() else None
+                brief = with_kinship(brief, segs)
                 share = polish(cfg, segs, job["lang"], used, lambda f: jobs.progress(db, job["id"], f), brief)
                 (d / "polished.json").write_text(json.dumps(segs, ensure_ascii=False))
                 jobs.update(db, job["id"], stage="polished", progress=0, flagged_share=share)

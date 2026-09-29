@@ -20,8 +20,11 @@ def ps(url):
     return _req(url, "/api/ps", timeout=5)["models"]
 
 
-def chat(url, model, messages, cfg=None):
-    out = _req(url, "/api/chat", {"model": model, "messages": messages, "stream": False, "think": False,
+def chat(url, model, messages, cfg=None, json_mode=False):
+    body = {"model": model, "messages": messages, "stream": False, "think": False}
+    if json_mode:  # ollama constrains decoding to valid JSON
+        body["format"] = "json"
+    out = _req(url, "/api/chat", {**body,
                                   "options": {"temperature": 0.3, "num_predict": 1024,  # cap runaway repetition loops
                                               "num_ctx": (cfg or {}).get("llm_ctx", 4096),
                                               "num_gpu": 99}},  # all layers on GPU; ollama's estimate is too cautious on 6 GB

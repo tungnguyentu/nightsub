@@ -55,6 +55,31 @@ def address_pair(brief):
     return pair
 
 
+# Vocatives that fix the relationship when the brief has no usable pair: (terms the woman uses for the man, pair).
+KINSHIP_PAIRS = [
+    (("お義父さん", "お父さん", "父さん", "パパ"),
+     {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}),
+    (("お兄ちゃん", "お兄さん", "兄さん"),
+     {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}),
+    (("先生",), {"male_self": "thầy", "male_to_female": "em", "female_self": "em", "female_to_male": "thầy"}),
+    (("社長", "部長", "課長"), {"male_self": "tôi", "male_to_female": "em", "female_self": "em", "female_to_male": "sếp"}),
+]
+
+
+def with_kinship(brief, segs, min_hits=3):
+    """If the brief has no consistent pronoun pair, derive one from how women address men in the source
+    (e.g. 父さん said 25 times -> bố/con, not the anh/em default). Returns a brief dict, never mutates."""
+    brief = dict(brief) if isinstance(brief, dict) else {}
+    if address_pair(brief):
+        return brief
+    female = " ".join(s.get("src") or s.get("text", "") for s in segs if s.get("gender") == "F")
+    best = max(((sum(female.count(t) for t in terms), pair) for terms, pair in KINSHIP_PAIRS), key=lambda x: x[0])
+    if best[0] >= min_hits:
+        brief["vi_address"] = best[1]
+        brief["address_source"] = "kinship"
+    return brief
+
+
 def allowed_pronouns(lang, brief=None):
     """Personal pronouns a Vietnamese line may use; others get flagged for polish (flags.py)."""
     return set((address_pair(brief) or DEFAULT_PAIR).values()) if lang == "vi" else None
@@ -285,6 +310,7 @@ def run(cfg, db, batch):
                 d = config.job_dir(cfg, job["id"])
                 segs = json.loads((d / "segments.json").read_text())
                 brief = json.loads((d / "brief.json").read_text()) if (d / "brief.json").exists() else None
+                brief = with_kinship(brief, segs)
                 fallback_stats = {"cloud_fallbacks": 0}
                 tr, failed = translate_via_pivot(cfg, [tagged(s) for s in segs], job["lang"], used,
                                                  lambda f: jobs.progress(db, job["id"], f),

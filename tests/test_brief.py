@@ -25,7 +25,7 @@ def valid_brief():
 def test_same_video_reuses_brief_cache(tmp_path, monkeypatch):
     cfg, db, batch = setup_batch(tmp_path, ["あ"], 2)
     calls = []
-    monkeypatch.setattr(brief.ollama, "chat", lambda url, model, messages, cfg=None: calls.append(model) or valid_brief())
+    monkeypatch.setattr(brief.ollama, "chat", lambda url, model, messages, cfg=None, **kw: calls.append(model) or valid_brief())
     monkeypatch.setattr(brief, "unload_all", lambda cfg, used: None)
     brief.run(cfg, db, batch)
     assert calls == ["vi-model", "vi-model"]
@@ -46,7 +46,7 @@ def test_bad_merge_falls_back_then_marks_skipped(tmp_path, monkeypatch):
 def test_400_lines_use_three_chunks_and_merge(tmp_path, monkeypatch):
     cfg, db, batch = setup_batch(tmp_path, [str(i) for i in range(400)])
     calls = []
-    def chat(url, model, messages, cfg=None):
+    def chat(url, model, messages, cfg=None, **kw):
         prompt = messages[1]["content"]
         calls.append(prompt)
         return "facts" if prompt.startswith("Extract") else valid_brief()
