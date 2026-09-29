@@ -111,3 +111,16 @@ def test_truncated_merge_is_retried_shorter(monkeypatch):
     monkeypatch.setattr(brief, "_chat", chat)
     assert brief.make_brief({}, ["あ"] * 10, set())["summary"] == "s"
     assert len(merges) == 2 and "1 sentence" in merges[1]
+
+
+def test_chat_routes_agy_brief_model_to_cloud_without_ollama_options(monkeypatch):
+    from autosub.stages import brief
+    calls = []
+    monkeypatch.setattr(brief.agy, "chat", lambda model, messages: calls.append((model, messages)) or "facts")
+    monkeypatch.setattr(brief.ollama, "chat", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected local call")))
+    cfg = {"brief_model": "agy/gemini-test", "models": {"vi": "local"}, "fallback_model": "local",
+           "ollama_url": "http://localhost"}
+
+    assert brief._chat(cfg, "Japanese dialogue", set(), json_mode=True, max_tokens=123) == "facts"
+    assert calls[0][0] == "agy/gemini-test"
+    assert calls[0][1][1]["content"] == "Japanese dialogue"

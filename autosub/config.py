@@ -17,6 +17,10 @@ DEFAULTS = {
     "min_gpu_share": 0.9,  # translate/polish fail if less of the model than this is on GPU (R9)
     "pivot": {},  # e.g. {"vi": "en"} to go JA -> en -> vi; measured worse with qwen3-4b (English leaks through)
     "asr_model": "kotoba-tech/kotoba-whisper-v2.0-faster",  # JA-tuned large-v3 distil: 2.6x faster, more lines caught
+    "verify_asr_model": "large-v3",  # independent second ASR model for checking Kotoba transcripts
+    "verify_agree": 0.6,  # normalized text similarity at or above this keeps the Kotoba result
+    "verify_model": None,  # None uses models.vi to arbitrate ASR disagreements (agy/ is cloud-capable)
+    "verify": True,  # set False to pass the Kotoba transcript through without a second ASR pass
     "asr_compute_type": "int8_float16",
     "asr_language": "ja",  # fixed source language; per-span auto-detect misfires on short lines (None = auto)
     "vram_needed_mb": 5000,

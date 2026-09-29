@@ -10,19 +10,20 @@ from . import config, gpu, jobs, preflight
 
 # (name, from_stage, to_stage). Stage runners take (cfg, db, batch) and advance/fail jobs themselves.
 STAGES = [("gate", "queued", "gated"), ("asr", "gated", "transcribed"), ("brief", "transcribed", "briefed"),
-          ("translate", "briefed", "translated"),
+          ("verify", "briefed", "verified"), ("translate", "verified", "translated"),
           ("polish", "translated", "polished"), ("retime", "polished", "done")]
 STEP_INFO = [
     {"name": "gate", "label_vi": "Lọc âm thanh", "help_vi": "Tách lời thoại khỏi đoạn không lời."},
     {"name": "asr", "label_vi": "Nhận giọng nói", "help_vi": "Chuyển lời thoại tiếng Nhật thành văn bản."},
     {"name": "brief", "label_vi": "Tóm tắt bối cảnh", "help_vi": "Tóm tắt nhân vật, quan hệ và cách xưng hô."},
+    {"name": "verify", "label_vi": "Đối chiếu", "help_vi": "Nghe lại bằng model thứ hai; câu lệch được Gemini/LLM chọn lại theo ngữ cảnh."},
     {"name": "translate", "label_vi": "Dịch", "help_vi": "Dịch phụ đề theo bối cảnh và hội thoại lân cận."},
     {"name": "polish", "label_vi": "Chỉnh câu", "help_vi": "Rà soát câu dịch để tự nhiên, đúng nghĩa."},
     {"name": "retime", "label_vi": "Căn thời gian", "help_vi": "Điều chỉnh thời lượng và tốc độ đọc."},
 ]
 
-GPU_STAGES = {"gate", "asr", "brief", "translate", "polish"}  # everything but retime
-LLM_STAGES = {"brief", "translate", "polish"}
+GPU_STAGES = {"gate", "asr", "brief", "verify", "translate", "polish"}  # everything but retime
+LLM_STAGES = {"brief", "verify", "translate", "polish"}
 
 
 def subprocess_stage(name):
@@ -58,6 +59,7 @@ def inprocess_stage(name):
 
 
 RUNNERS = {"gate": subprocess_stage("gate"), "asr": subprocess_stage("asr"),
+           "verify": subprocess_stage("verify"),
            "brief": inprocess_stage("brief"),
            "translate": inprocess_stage("translate"), "polish": inprocess_stage("polish"),
            "retime": inprocess_stage("retime")}

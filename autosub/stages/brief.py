@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from .. import config, jobs, ollama
+from .. import agy, config, jobs, ollama
 from ..refusal import PHRASES
 from .translate import unload_all
 
@@ -31,13 +31,19 @@ def _chat(cfg, prompt, used, json_mode=False, max_tokens=1024):
     primary = cfg.get("brief_model") or cfg["models"]["vi"]
     for model in dict.fromkeys((primary, cfg["fallback_model"])):
         try:
-            out = ollama.chat(cfg["ollama_url"], model, [
+            messages = [
                 {"role": "system", "content": "Summarize the Japanese dialogue faithfully. Do not invent facts. /no_think"},
                 {"role": "user", "content": prompt},
-            ], cfg, json_mode=json_mode, max_tokens=max_tokens)
+            ]
+            if agy.is_agy(model):
+                out = agy.chat(model, messages)
+            else:
+                out = ollama.chat(cfg["ollama_url"], model, messages, cfg,
+                                  json_mode=json_mode, max_tokens=max_tokens)
         except OSError:
             continue
-        used.add(model)
+        if not agy.is_agy(model):
+            used.add(model)
         if not out or PHRASES.search(out):
             continue
         return out

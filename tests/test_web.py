@@ -52,7 +52,7 @@ def test_eta_needs_history():
 def test_steps_api_and_job_state(client):
     c, db = client
     step_info = c.get("/steps").json()
-    assert [s["name"] for s in step_info] == ["gate", "asr", "brief", "translate", "polish", "retime"]
+    assert [s["name"] for s in step_info] == ["gate", "asr", "brief", "verify", "translate", "polish", "retime"]
     i = jobs.add(db, "/v/a.mp4", "vi")
     jobs.update(db, i, stage="gated", stage_times={"gate": 2.2}, progress=0.25)
     steps = c.get("/jobs").json()[0]["steps"]
@@ -70,7 +70,7 @@ def test_lines_endpoint_reads_segments_artifact_and_skipped_brief(client):
     data = c.get(f"/jobs/{i}/lines").json()
     assert data["brief"]["skipped"] == "model error"
     assert data["rows"] == [{"start":1.0,"end":2.0,"gender":"F","src":"日本語",
-                              "text":None,"polished":False,"failed":False}]
+                              "text":None,"polished":False,"verified":None,"asr_alt":None,"failed":False}]
 
 
 def test_lines_endpoint_prefers_polished_artifact_and_marks_failed(client):

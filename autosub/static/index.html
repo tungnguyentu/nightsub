@@ -238,7 +238,7 @@ function renderViewer() {
   const rows = $("lineFilter").checked ? viewerRows.filter(r => r.failed || r.polished) : viewerRows;
   $("lineRows").innerHTML = rows.length ? rows.map(r => {
     const gender = {M: "nam", F: "nữ"}[r.gender] || "?";
-    const marks = `${r.polished ? '<span class="badge polished">Đã chỉnh</span>' : ""}${r.failed ? '<span class="badge failed">Lỗi dịch</span>' : ""}`;
+    const marks = `${r.verified ? `<span class="badge" title="Ứng viên còn lại: ${esc(r.asr_alt || "")}" aria-label="Đã đối chiếu; ứng viên còn lại: ${esc(r.asr_alt || "n/a")}">Đã đối chiếu</span>` : ""}${r.polished ? '<span class="badge polished">Đã chỉnh</span>' : ""}${r.failed ? '<span class="badge failed">Lỗi dịch</span>' : ""}`;
     return `<tr><td>${timecode(r.start)}–${timecode(r.end)}</td><td>${gender}</td><td>${esc(r.src || "")}</td><td>${esc(r.text || "—")}</td><td>${marks || "—"}</td></tr>`;
   }).join("") : `<tr><td colspan="5" class="muted">Không có dòng phù hợp bộ lọc.</td></tr>`;
 }
@@ -289,7 +289,7 @@ function renderSteps(activeStep, stepRows = [], hasError = false) {
 }
 
 function activeStepFor(stage) {
-  const activeName = {queued: "gate", gated: "asr", transcribed: "brief", briefed: "translate",
+  const activeName = {queued: "gate", gated: "asr", transcribed: "brief", briefed: "verify", verified: "translate",
     translated: "polish", polished: "retime"}[stage];
   return activeName ? Math.max(0, stepInfo.findIndex(step => step.name === activeName))
     : stage === "done" ? stepInfo.length : 0;

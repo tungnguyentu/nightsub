@@ -128,6 +128,7 @@ def create_app(cfg, db):
         rows = [{"start": s.get("start"), "end": s.get("end"), "gender": s.get("gender"),
                  "src": s.get("src", s.get("text")), "text": s.get("text") if has_translation else None,
                  "polished": bool(s.get("polished")),
+                 "verified": s.get("verified"), "asr_alt": s.get("asr_alt"),
                  "failed": has_translation and s.get("text") == "[untranslated]"}
                 for s in raw]
         model = cfg["models"].get(job["lang"], "")
