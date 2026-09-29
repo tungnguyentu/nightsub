@@ -384,6 +384,73 @@ def test_kinship_needs_enough_hits_and_never_overrides_a_valid_brief_pair():
     assert tr.address_pair(tr.with_kinship(None, male_only)) is None
 
 
+@pytest.mark.parametrize(("speaker", "term", "pair"), [
+    ("F", "お義父さん", {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}),
+    ("F", "老師", {"male_self": "thầy", "male_to_female": "em", "female_self": "em", "female_to_male": "thầy"}),
+    ("F", "할아버지", {"male_self": "ông", "male_to_female": "cháu", "female_self": "cháu", "female_to_male": "ông"}),
+])
+def test_kinship_recognizes_japanese_chinese_and_korean(speaker, term, pair):
+    source_brief = {"skipped": "brief unavailable"}
+    brief = tr.with_kinship(source_brief, [{"text": term, "gender": speaker}] * 3)
+    assert brief is not source_brief and "address_source" not in source_brief
+    assert tr.address_pair(brief) == pair
+    assert brief["address_source"] == "kinship"
+
+
+@pytest.mark.parametrize(("term", "pair"), [
+    ("爸爸", {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}),
+    ("老板", {"male_self": "sếp", "male_to_female": "em", "female_self": "em", "female_to_male": "sếp"}),
+])
+def test_kinship_accepts_simplified_chinese(term, pair):
+    assert tr.address_pair(tr.with_kinship(None, [{"src": term, "gender": "F"}] * 3)) == pair
+
+
+@pytest.mark.parametrize(("term", "pair"), [
+    ("엄마", {"male_self": "con", "male_to_female": "mẹ", "female_self": "mẹ", "female_to_male": "con"}),
+    ("老婆", {"male_self": "chồng", "male_to_female": "vợ", "female_self": "vợ", "female_to_male": "chồng"}),
+    ("姉さん", {"male_self": "em", "male_to_female": "chị", "female_self": "chị", "female_to_male": "em"}),
+    ("妹", {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}),
+])
+def test_kinship_handles_man_addressing_a_woman(term, pair):
+    brief = tr.with_kinship(None, [{"text": term, "gender": "M"}] * 3)
+    assert tr.address_pair(brief) == pair
+    assert brief["address_source"] == "kinship"
+
+
+def test_kinship_longest_match_counts_nested_terms_once():
+    # 爸爸 contains 爸, 哥哥 contains 哥, and お父さん contains 父さん.
+    for term in ("爸爸", "哥哥", "お父さん"):
+        brief = tr.with_kinship(None, [{"text": term, "gender": "F"}], min_hits=2)
+        assert tr.address_pair(brief) is None
+        assert "address_source" not in brief
+
+
+def test_kinship_ties_keep_default_and_valid_brief_wins():
+    tied = [{"text": "お父さん爸爸", "gender": "F"}] * 3
+    brief = tr.with_kinship(None, tied)
+    assert tr.address_pair(brief) is None
+    assert "address_source" not in brief
+    explicit = {"vi_address": {"male_self": "chú", "male_to_female": "cháu",
+                               "female_self": "cháu", "female_to_male": "chú"}, "address_source": "brief"}
+    result = tr.with_kinship(explicit, tied)
+    assert result == explicit and result is not explicit
+
+
+def test_every_kinship_pair_is_mirrored_and_uses_allowed_pronouns():
+    for entry in tr.KINSHIP_PAIRS:
+        pair = entry["pair"]
+        assert pair["female_to_male"] == pair["male_self"]
+        assert pair["male_to_female"] == pair["female_self"]
+        assert set(pair.values()) <= tr.VI_PRONOUNS
+
+
+def test_japanese_anata_requires_ten_hits():
+    one = [{"text": "あなた", "gender": "F"}] * 9
+    many = [{"text": "あなた", "gender": "F"}] * 10
+    assert tr.address_pair(tr.with_kinship(None, one)) is None
+    assert tr.address_pair(tr.with_kinship(None, many))["male_self"] == "chồng"
+
+
 def test_ollama_json_mode_sets_format(monkeypatch):
     from autosub import ollama
     sent = {}

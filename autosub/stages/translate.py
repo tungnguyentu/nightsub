@@ -55,28 +55,145 @@ def address_pair(brief):
     return pair
 
 
-# Vocatives that fix the relationship when the brief has no usable pair: (terms the woman uses for the man, pair).
+# These are role-shaped reciprocal Vietnamese pairs, not literal word-for-word mappings. For
+# age-unspecified titles (work/customer/senior), anh/em avoids guessing a generation; parent and
+# grandparent titles use con and cháu respectively. Separate speaker directions cover mothers,
+# wives, daughters, and sisters addressed by men. Keeping each pair reciprocal is required by
+# address_pair(): each person's self-reference is what the other calls them.
 KINSHIP_PAIRS = [
-    (("お義父さん", "お父さん", "父さん", "パパ"),
-     {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}),
-    (("お兄ちゃん", "お兄さん", "兄さん"),
-     {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}),
-    (("先生",), {"male_self": "thầy", "male_to_female": "em", "female_self": "em", "female_to_male": "thầy"}),
-    (("社長", "部長", "課長"), {"male_self": "tôi", "male_to_female": "em", "female_self": "em", "female_to_male": "sếp"}),
+    # Japanese, woman -> man.
+    {"speaker": "F", "language": "ja", "terms": ("お義父さん", "お父さん", "父さん", "パパ"),
+     "pair": {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}},
+    {"speaker": "F", "language": "ja", "terms": ("お兄ちゃん", "お兄さん", "兄さん"),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+    {"speaker": "F", "language": "ja", "terms": ("おじさん", "叔父さん", "伯父さん"),
+     "pair": {"male_self": "chú", "male_to_female": "cháu", "female_self": "cháu", "female_to_male": "chú"}},
+    {"speaker": "F", "language": "ja", "terms": ("先生",),
+     "pair": {"male_self": "thầy", "male_to_female": "em", "female_self": "em", "female_to_male": "thầy"}},
+    {"speaker": "F", "language": "ja", "terms": ("社長", "部長", "課長"),
+     "pair": {"male_self": "sếp", "male_to_female": "em", "female_self": "em", "female_to_male": "sếp"}},
+    {"speaker": "F", "language": "ja", "terms": ("あなた",), "min_hits": 10,
+     "pair": {"male_self": "chồng", "male_to_female": "vợ", "female_self": "vợ", "female_to_male": "chồng"}},
+    {"speaker": "F", "language": "ja", "terms": ("おじいちゃん", "おじいさん", "じいちゃん"),
+     "pair": {"male_self": "ông", "male_to_female": "cháu", "female_self": "cháu", "female_to_male": "ông"}},
+    {"speaker": "F", "language": "ja", "terms": ("先輩",),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+    {"speaker": "F", "language": "ja", "terms": ("お客様",),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+
+    # Simplified and Traditional Chinese, woman -> man.
+    {"speaker": "F", "language": "zh", "terms": ("爸爸", "爸", "公公", "岳父"),
+     "pair": {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}},
+    {"speaker": "F", "language": "zh", "terms": ("哥哥", "哥"),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+    {"speaker": "F", "language": "zh", "terms": ("叔叔", "大叔"),
+     "pair": {"male_self": "chú", "male_to_female": "cháu", "female_self": "cháu", "female_to_male": "chú"}},
+    {"speaker": "F", "language": "zh", "terms": ("老师", "老師"),
+     "pair": {"male_self": "thầy", "male_to_female": "em", "female_self": "em", "female_to_male": "thầy"}},
+    {"speaker": "F", "language": "zh", "terms": ("老板", "老闆", "经理", "經理"),
+     "pair": {"male_self": "sếp", "male_to_female": "em", "female_self": "em", "female_to_male": "sếp"}},
+    {"speaker": "F", "language": "zh", "terms": ("老公",),
+     "pair": {"male_self": "chồng", "male_to_female": "vợ", "female_self": "vợ", "female_to_male": "chồng"}},
+    {"speaker": "F", "language": "zh", "terms": ("爷爷", "爺爺"),
+     "pair": {"male_self": "ông", "male_to_female": "cháu", "female_self": "cháu", "female_to_male": "ông"}},
+    {"speaker": "F", "language": "zh", "terms": ("学长", "學長"),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+    {"speaker": "F", "language": "zh", "terms": ("客人",),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+
+    # Korean, woman -> man. 형 is a male-to-male form, outside this mixed-gender pair model.
+    {"speaker": "F", "language": "ko", "terms": ("아빠", "아버지", "아버님"),
+     "pair": {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}},
+    {"speaker": "F", "language": "ko", "terms": ("오빠",),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+    {"speaker": "F", "language": "ko", "terms": ("아저씨", "삼촌"),
+     "pair": {"male_self": "chú", "male_to_female": "cháu", "female_self": "cháu", "female_to_male": "chú"}},
+    {"speaker": "F", "language": "ko", "terms": ("선생님",),
+     "pair": {"male_self": "thầy", "male_to_female": "em", "female_self": "em", "female_to_male": "thầy"}},
+    {"speaker": "F", "language": "ko", "terms": ("사장님", "부장님", "팀장님"),
+     "pair": {"male_self": "sếp", "male_to_female": "em", "female_self": "em", "female_to_male": "sếp"}},
+    {"speaker": "F", "language": "ko", "terms": ("여보", "자기"),
+     "pair": {"male_self": "chồng", "male_to_female": "vợ", "female_self": "vợ", "female_to_male": "chồng"}},
+    {"speaker": "F", "language": "ko", "terms": ("할아버지",),
+     "pair": {"male_self": "ông", "male_to_female": "cháu", "female_self": "cháu", "female_to_male": "ông"}},
+    {"speaker": "F", "language": "ko", "terms": ("선배", "선배님"),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+    {"speaker": "F", "language": "ko", "terms": ("손님",),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+
+    # Men addressing women: pair order still describes male and female roles.
+    {"speaker": "M", "language": "ja", "terms": ("お母さん", "母さん", "ママ"),
+     "pair": {"male_self": "con", "male_to_female": "mẹ", "female_self": "mẹ", "female_to_male": "con"}},
+    {"speaker": "M", "language": "ja", "terms": ("奥さん", "嫁"),
+     "pair": {"male_self": "chồng", "male_to_female": "vợ", "female_self": "vợ", "female_to_male": "chồng"}},
+    {"speaker": "M", "language": "ja", "terms": ("娘", "娘さん"),
+     "pair": {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}},
+    {"speaker": "M", "language": "ja", "terms": ("お姉ちゃん", "お姉さん", "姉さん"),
+     "pair": {"male_self": "em", "male_to_female": "chị", "female_self": "chị", "female_to_male": "em"}},
+    {"speaker": "M", "language": "ja", "terms": ("妹", "妹ちゃん"),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+    {"speaker": "M", "language": "ja", "terms": ("先生",),
+     "pair": {"male_self": "em", "male_to_female": "cô", "female_self": "cô", "female_to_male": "em"}},
+    {"speaker": "M", "language": "ja", "terms": ("社長", "部長", "課長"),
+     "pair": {"male_self": "em", "male_to_female": "sếp", "female_self": "sếp", "female_to_male": "em"}},
+
+    {"speaker": "M", "language": "zh", "terms": ("妈妈", "媽媽", "妈", "媽"),
+     "pair": {"male_self": "con", "male_to_female": "mẹ", "female_self": "mẹ", "female_to_male": "con"}},
+    {"speaker": "M", "language": "zh", "terms": ("老婆", "妻子"),
+     "pair": {"male_self": "chồng", "male_to_female": "vợ", "female_self": "vợ", "female_to_male": "chồng"}},
+    {"speaker": "M", "language": "zh", "terms": ("女儿", "女兒", "闺女", "閨女", "娘"),
+     "pair": {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}},
+    {"speaker": "M", "language": "zh", "terms": ("姐姐", "姊姊", "姐"),
+     "pair": {"male_self": "em", "male_to_female": "chị", "female_self": "chị", "female_to_male": "em"}},
+    {"speaker": "M", "language": "zh", "terms": ("妹妹", "妹"),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+    {"speaker": "M", "language": "zh", "terms": ("老师", "老師"),
+     "pair": {"male_self": "em", "male_to_female": "cô", "female_self": "cô", "female_to_male": "em"}},
+    {"speaker": "M", "language": "zh", "terms": ("老板", "老闆", "经理", "經理"),
+     "pair": {"male_self": "em", "male_to_female": "sếp", "female_self": "sếp", "female_to_male": "em"}},
+
+    {"speaker": "M", "language": "ko", "terms": ("엄마", "어머니", "어머님"),
+     "pair": {"male_self": "con", "male_to_female": "mẹ", "female_self": "mẹ", "female_to_male": "con"}},
+    {"speaker": "M", "language": "ko", "terms": ("여보", "자기"),
+     "pair": {"male_self": "chồng", "male_to_female": "vợ", "female_self": "vợ", "female_to_male": "chồng"}},
+    {"speaker": "M", "language": "ko", "terms": ("딸", "딸아이"),
+     "pair": {"male_self": "bố", "male_to_female": "con", "female_self": "con", "female_to_male": "bố"}},
+    {"speaker": "M", "language": "ko", "terms": ("누나",),
+     "pair": {"male_self": "em", "male_to_female": "chị", "female_self": "chị", "female_to_male": "em"}},
+    {"speaker": "M", "language": "ko", "terms": ("여동생",),
+     "pair": {"male_self": "anh", "male_to_female": "em", "female_self": "em", "female_to_male": "anh"}},
+    {"speaker": "M", "language": "ko", "terms": ("선생님",),
+     "pair": {"male_self": "em", "male_to_female": "cô", "female_self": "cô", "female_to_male": "em"}},
+    {"speaker": "M", "language": "ko", "terms": ("사장님", "부장님", "팀장님"),
+     "pair": {"male_self": "em", "male_to_female": "sếp", "female_self": "sếp", "female_to_male": "em"}},
 ]
 
 
 def with_kinship(brief, segs, min_hits=3):
-    """If the brief has no consistent pronoun pair, derive one from how women address men in the source
-    (e.g. 父さん said 25 times -> bố/con, not the anh/em default). Returns a brief dict, never mutates."""
+    """Infer a reciprocal Vietnamese pair from gender-tagged vocatives only when the brief lacks one."""
     brief = dict(brief) if isinstance(brief, dict) else {}
     if address_pair(brief):
         return brief
-    female = " ".join(s.get("src") or s.get("text", "") for s in segs if s.get("gender") == "F")
-    best = max(((sum(female.count(t) for t in terms), pair) for terms, pair in KINSHIP_PAIRS), key=lambda x: x[0])
-    if best[0] >= min_hits:
-        brief["vi_address"] = best[1]
-        brief["address_source"] = "kinship"
+
+    hits = [0] * len(KINSHIP_PAIRS)
+    for speaker in ("F", "M"):
+        text = " ".join(s.get("src") or s.get("text", "") for s in segs if s.get("gender") == speaker)
+        term_to_entry = {term: i for i, entry in enumerate(KINSHIP_PAIRS) if entry["speaker"] == speaker
+                         for term in entry["terms"]}
+        if not term_to_entry:
+            continue
+        pattern = re.compile("|".join(re.escape(term) for term in
+                                      sorted(term_to_entry, key=lambda term: (-len(term), term))))
+        for match in pattern.finditer(text):
+            hits[term_to_entry[match.group()]] += 1
+
+    best_hits = max(hits, default=0)
+    winners = [i for i, count in enumerate(hits) if count == best_hits and count > 0]
+    if len(winners) == 1:
+        winner = KINSHIP_PAIRS[winners[0]]
+        if best_hits >= max(min_hits, winner.get("min_hits", min_hits)):
+            brief["vi_address"] = dict(winner["pair"])
+            brief["address_source"] = "kinship"
     return brief
 
 
