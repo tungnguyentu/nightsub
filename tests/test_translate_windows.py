@@ -308,7 +308,7 @@ def test_speaker_labels_in_vi_address_fall_back_to_static_rule():
     cfg = dict(config.DEFAULTS)
     bad = {"vi_address": {"male_self": "Speaker 2", "male_to_female": "Speaker 1",
                           "female_self": "Speaker 1", "female_to_male": "Speaker 2"}}
-    assert translate.address_rule(cfg, "vi", bad) == f" {cfg['address']['vi']}" + translate.KINSHIP_NOTE
+    assert translate.address_rule(cfg, "vi", bad) == f" {cfg['address']['vi']}" + translate.KINSHIP_NOTE + translate.NO_ADDED_PRONOUNS
     good = {"vi_address": {"male_self": "Chú", "male_to_female": "cháu", "female_self": "cháu",
                            "female_to_male": "chú"}}
     rule = translate.address_rule(cfg, "vi", good)
@@ -319,7 +319,7 @@ def test_inconsistent_or_partial_pair_falls_back():
     from autosub import config
     from autosub.stages import translate
     cfg = dict(config.DEFAULTS)
-    static = f" {cfg['address']['vi']}" + translate.KINSHIP_NOTE
+    static = f" {cfg['address']['vi']}" + translate.KINSHIP_NOTE + translate.NO_ADDED_PRONOUNS
     mixed = {"vi_address": {"male_self": "tôi", "male_to_female": "em", "female_self": "chị", "female_to_male": "ông"}}
     assert translate.address_rule(cfg, "vi", mixed) == static  # the real 4B output from the clip run
     assert translate.address_rule(cfg, "vi", {"vi_address": {"male_self": "anh"}}) == static
@@ -365,7 +365,8 @@ def test_vietnamese_rule_keeps_kinship_words():
 
 def test_father_vocatives_pick_bo_con_when_brief_has_no_pair():
     segs = [{"text": "父さんリビングで待っていてください", "gender": "F"},
-            {"text": "今日はお父さんが好きな味噌煮です", "gender": "F"},
+            {"text": "今日はお父さんが好きな味噌煮です", "gender": "F"},  # about him: not counted
+            {"text": "お父さん、どうぞ", "gender": "F"},
             {"text": "お父さん、お茶です", "gender": "F"},
             {"text": "なおさんが作るやつは", "gender": "M"}]
     b = tr.with_kinship({"skipped": "JSONDecodeError"}, segs)
@@ -476,3 +477,20 @@ def test_gpu_split_models_skip_forced_offload_and_fit_check(monkeypatch):
     import pytest
     with pytest.raises(tr.GpuFitError):
         tr.check_fit({"ollama_url": "", "gpu_split_models": []}, "gemma3:12b")
+
+
+def test_third_person_mentions_do_not_count_as_address():
+    about = [{"text": t, "gender": "F"} for t in
+             ("リビングにお父さんいるから", "お父さんが好きな", "お父さんは寝てる", "お父さんの部屋", "お父さんに言う")]
+    # "いるから" follows お父さん directly with no particle only in the first line -> 1 vocative-looking hit, below 3
+    assert tr.address_pair(tr.with_kinship(None, about)) is None
+
+
+def test_kinship_pair_is_a_scoped_hint_and_keeps_anh_em_allowed():
+    segs = [{"text": "お父さん、お茶です", "gender": "F"}] * 4
+    b = tr.with_kinship(None, segs)
+    rule = tr.address_rule({}, "vi", b)
+    assert "CHỈ khi hai người đó nói" in rule and "'お父さん'" in rule and "mặc định anh/em" in rule
+    assert "Giữ nguyên suốt video" not in rule
+    assert {"bố", "con", "anh", "em"} <= tr.allowed_pronouns("vi", b)
+    assert tr.NO_ADDED_PRONOUNS in rule

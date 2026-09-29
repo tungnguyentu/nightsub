@@ -169,6 +169,11 @@ KINSHIP_PAIRS = [
 ]
 
 
+# A case/topic particle right after the term means the line talks ABOUT that person, not TO them
+# (リビングにお父さんいるから / お父さんが好きな...). Japanese particles plus common CJK/Korean follow-ups.
+THIRD_PERSON_NEXT = set("がはをにのもとへでや") | {"이", "가", "은", "는", "을", "를", "의", "에", "도", "的", "在", "是"}
+
+
 def with_kinship(brief, segs, min_hits=3):
     """Infer a reciprocal Vietnamese pair from gender-tagged vocatives only when the brief lacks one."""
     brief = dict(brief) if isinstance(brief, dict) else {}
@@ -176,6 +181,7 @@ def with_kinship(brief, segs, min_hits=3):
         return brief
 
     hits = [0] * len(KINSHIP_PAIRS)
+    first_term = {}
     for speaker in ("F", "M"):
         text = " ".join(s.get("src") or s.get("text", "") for s in segs if s.get("gender") == speaker)
         term_to_entry = {term: i for i, entry in enumerate(KINSHIP_PAIRS) if entry["speaker"] == speaker
@@ -185,7 +191,10 @@ def with_kinship(brief, segs, min_hits=3):
         pattern = re.compile("|".join(re.escape(term) for term in
                                       sorted(term_to_entry, key=lambda term: (-len(term), term))))
         for match in pattern.finditer(text):
+            if text[match.end():match.end() + 1] in THIRD_PERSON_NEXT:  # お父さんが/は/に...: talking ABOUT him
+                continue
             hits[term_to_entry[match.group()]] += 1
+            first_term.setdefault(term_to_entry[match.group()], match.group())
 
     best_hits = max(hits, default=0)
     winners = [i for i, count in enumerate(hits) if count == best_hits and count > 0]
@@ -194,12 +203,18 @@ def with_kinship(brief, segs, min_hits=3):
         if best_hits >= max(min_hits, winner.get("min_hits", min_hits)):
             brief["vi_address"] = dict(winner["pair"])
             brief["address_source"] = "kinship"
+            brief["address_term"] = first_term.get(winners[0], winner["terms"][0])
     return brief
 
 
 def allowed_pronouns(lang, brief=None):
     """Personal pronouns a Vietnamese line may use; others get flagged for polish (flags.py)."""
-    return set((address_pair(brief) or DEFAULT_PAIR).values()) if lang == "vi" else None
+    if lang != "vi":
+        return None
+    allowed = set((address_pair(brief) or DEFAULT_PAIR).values())
+    if isinstance(brief, dict) and brief.get("address_source") == "kinship":
+        allowed |= set(DEFAULT_PAIR.values())  # other characters may use anh/em
+    return allowed
 
 
 # The pronoun rule must not rewrite kinship/role words the source actually says (お父さん is "bố", not "anh").
@@ -208,14 +223,25 @@ KINSHIP_NOTE = (" Quy tắc xưng hô chỉ áp dụng cho đại từ nhân xư
                 "社長 → giám đốc, 先輩 → tiền bối, 奥さん → vợ/chị nhà.")
 
 
+NO_ADDED_PRONOUNS = (" Không tự thêm đại từ hay từ xưng hô khi câu gốc không có; câu ngắn (ダメ, ごめん, はい...) "
+                     "dịch ngắn, không gắn 'bố', 'con', 'anh', 'em' vào cuối câu.")
+
+
 def address_rule(cfg, lang, brief=None):
     pair = address_pair(brief) if lang == "vi" else None
+    if pair and isinstance(brief, dict) and brief.get("address_source") == "kinship":
+        term = brief.get("address_term") or "?"
+        return (f" Gợi ý xưng hô: trong phim có người được gọi trực tiếp là '{term}'. CHỈ khi hai người đó nói "
+                f"với nhau thì nam xưng '{pair['male_self']}', gọi nữ là '{pair['male_to_female']}'; nữ xưng "
+                f"'{pair['female_self']}', gọi nam là '{pair['female_to_male']}'. Có thể có nhân vật khác "
+                "(chồng, người yêu...): khi nói với họ thì chọn theo ngữ cảnh, mặc định anh/em."
+                + KINSHIP_NOTE + NO_ADDED_PRONOUNS)
     if pair:
         return (f" Xưng hô theo bối cảnh: nam xưng '{pair['male_self']}', gọi nữ là '{pair['male_to_female']}'; "
                 f"nữ xưng '{pair['female_self']}', gọi nam là '{pair['female_to_male']}'. Giữ nguyên suốt video."
-                + KINSHIP_NOTE)
+                + KINSHIP_NOTE + NO_ADDED_PRONOUNS)
     rule = cfg.get("address", {}).get(lang)
-    return (f" {rule}" + (KINSHIP_NOTE if lang == "vi" else "")) if rule else ""
+    return (f" {rule}" + (KINSHIP_NOTE + NO_ADDED_PRONOUNS if lang == "vi" else "")) if rule else ""
 
 
 def prompt(lines, ctx, lang, cfg=None, *, previous_sources=None, following=None, brief=None):
