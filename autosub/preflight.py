@@ -23,7 +23,7 @@ def check(cfg):
     except Exception as e:
         problems.append(f"ollama not reachable at {cfg['ollama_url']} ({e}). Start it with `ollama serve`.")
     else:
-        wanted = {*cfg["models"].values(), cfg["fallback_model"], cfg.get("brief_model") or cfg["models"]["vi"]}
+        wanted = {*cfg["models"].values(), cfg["fallback_model"], cfg.get("brief_model") or cfg["models"]["vi"]} | ({cfg["cloud_fallback_model"]} if cfg.get("cloud_fallback_model") else set())
         if any(agy.is_agy(m) for m in wanted) and not agy.binary():
             problems.append("an agy/ model is configured but the Antigravity CLI `agy` is not installed")
         for m in sorted(m for m in wanted if not agy.is_agy(m)):

@@ -356,6 +356,25 @@ def test_bisect_sends_only_the_line_the_cloud_refuses_alone_to_local(monkeypatch
     assert failed == 0 and local_calls == [["x"]] and stats["cloud_fallbacks"] == 1
 
 
+
+def test_line_primary_cloud_refuses_goes_to_cloud_fallback_then_local(monkeypatch):
+    cfg = {**CFG, "models": {"vi": "agy/cloud"}, "cloud_fallback_model": "grok/g", "fallback_model": "local:4b",
+           "cloud_window": 8, "cloud_parallel": 1, "context_lines": 0, "lookahead_lines": 0}
+    def cloud(model, messages):
+        lines = prompt_lines(messages)
+        refuse = "x" in lines if model == "agy/cloud" else "y" in lines
+        return "Tôi không thể dịch nội dung này" if refuse else json.dumps([f"{model} {l}" for l in lines])
+    local_calls = []
+    def local(url, model, messages, cfg=None):
+        local_calls.append(prompt_lines(messages))
+        return json.dumps(["bản địa"])
+    monkeypatch.setattr(tr.agy, "chat", cloud)
+    monkeypatch.setattr(tr.ollama, "chat", local)
+    monkeypatch.setattr(tr, "check_fit", lambda *a: None)
+    out, failed = tr.translate_texts(cfg, ["a", "x", "y x"], "vi", set())
+    assert out == ["agy/cloud a", "grok/g x", "bản địa"] and failed == 0 and local_calls == [["y x"]]
+
+
 def test_vietnamese_rule_keeps_kinship_words():
     from autosub import config
     rule = tr.address_rule(dict(config.DEFAULTS), "vi", None)

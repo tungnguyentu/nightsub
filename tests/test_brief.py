@@ -28,7 +28,7 @@ def test_same_video_reuses_brief_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(brief.ollama, "chat", lambda url, model, messages, cfg=None, **kw: calls.append(model) or valid_brief())
     monkeypatch.setattr(brief, "unload_all", lambda cfg, used: None)
     brief.run(cfg, db, batch)
-    assert calls == ["vi-model", "vi-model"]
+    assert calls == ["vi-model"] * 3  # facts, merge, cast; second job hits the cache
     assert [jobs.get(db, j["id"])["stage"] for j in batch] == ["briefed", "briefed"]
     assert (config.job_dir(cfg, batch[1]["id"]) / "brief.json").read_text() == (config.job_dir(cfg, batch[0]["id"]) / "brief.json").read_text()
 
@@ -53,7 +53,22 @@ def test_400_lines_use_three_chunks_and_merge(tmp_path, monkeypatch):
     monkeypatch.setattr(brief.ollama, "chat", chat)
     monkeypatch.setattr(brief, "unload_all", lambda cfg, used: None)
     brief.run(cfg, db, batch)
-    assert len(calls) == 4 and sum(p.startswith("Extract") for p in calls) == 3
+    assert len(calls) == 9 and sum(p.startswith("Extract") for p in calls) == 3  # + merge + 5 cast windows
+
+
+def test_cast_labels_each_line_and_blanks_a_bad_window(tmp_path, monkeypatch):
+    cfg, db, batch = setup_batch(tmp_path, ["あ"] * 81)
+    def chat(url, model, messages, cfg=None, **kw):
+        p = messages[1]["content"]
+        if p.startswith("Characters"):
+            n = int(p.split("each of the ")[1].split()[0])
+            return json.dumps({"lines": ["Nao>Shūji"] * n}) if n == 80 else "not json"
+        return "facts" if p.startswith("Extract") else valid_brief()
+    monkeypatch.setattr(brief.ollama, "chat", chat)
+    monkeypatch.setattr(brief, "unload_all", lambda cfg, used: None)
+    brief.run(cfg, db, batch)
+    speakers = json.loads((config.job_dir(cfg, batch[0]["id"]) / "brief.json").read_text())["speakers"]
+    assert speakers == ["Nao>Shūji"] * 80 + [""]
 
 
 def test_normalize_coerces_wrong_types_instead_of_discarding():

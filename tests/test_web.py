@@ -69,7 +69,7 @@ def test_lines_endpoint_reads_segments_artifact_and_skipped_brief(client):
     (d / "brief.json").write_text('{"skipped":"model error"}')
     data = c.get(f"/jobs/{i}/lines").json()
     assert data["brief"]["skipped"] == "model error"
-    assert data["rows"] == [{"start":1.0,"end":2.0,"gender":"F","src":"日本語",
+    assert data["rows"] == [{"start":1.0,"end":2.0,"gender":"F","speaker":None,"src":"日本語",
                               "text":None,"polished":False,"verified":None,"asr_alt":None,"failed":False}]
 
 

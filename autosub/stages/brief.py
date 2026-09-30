@@ -2,13 +2,14 @@
 import hashlib
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .. import agy, config, jobs, ollama
 from ..refusal import PHRASES
-from .translate import unload_all
+from .translate import tagged, unload_all
 
-BRIEF_VERSION = "scene-brief-v1"
+BRIEF_VERSION = "scene-brief-v2"  # v2: per-line speakers (cast pass)
 CHUNK_SIZE = 150
 MAX_CHARS = 600
 
@@ -50,16 +51,16 @@ BRIEF_SCHEMA = {"type": "object", "required": ["summary", "characters", "relatio
                                                                                        "between": {"type": "string"}}}}}}
 
 
-def _chat(cfg, prompt, used, json_mode=False, max_tokens=1024):
+def _chat(cfg, prompt, used, json_mode=False, max_tokens=1024, schema=None):
     primary = cfg.get("brief_model") or cfg["models"]["vi"]
-    for model in dict.fromkeys((primary, cfg["fallback_model"])):
+    for model in dict.fromkeys(m for m in (primary, cfg.get("cloud_fallback_model"), cfg["fallback_model"]) if m):
         try:
             messages = [
                 {"role": "system", "content": "Summarize the Japanese dialogue faithfully. Do not invent facts. /no_think"},
                 {"role": "user", "content": prompt},
             ]
             if agy.is_agy(model):
-                out = agy.chat(model, messages, json_schema=BRIEF_SCHEMA if json_mode else None)
+                out = agy.chat(model, messages, json_schema=(schema or BRIEF_SCHEMA) if json_mode else None)
             else:
                 out = ollama.chat(cfg["ollama_url"], model, messages, cfg,
                                   json_mode=json_mode, max_tokens=max_tokens)
@@ -89,7 +90,7 @@ def condense(cfg, facts, used):
     return facts
 
 
-def make_brief(cfg, texts, used):
+def make_brief(cfg, texts, used, progress=lambda f: None):
     facts = []
     for start in range(0, len(texts), CHUNK_SIZE):
         chunk = texts[start:start + CHUNK_SIZE]
@@ -99,6 +100,7 @@ def make_brief(cfg, texts, used):
         result = _chat(cfg, prompt, used)
         if result is not None:  # a refused chunk just contributes no facts
             facts.append(result)
+        progress(min(1.0, (start + CHUNK_SIZE) / len(texts)))
     if not facts:
         raise ValueError("every chunk summary was refused or unavailable")
     facts = condense(cfg, facts, used)
@@ -115,7 +117,8 @@ def make_brief(cfg, texts, used):
                        '"addresses":[{"between":"<woman> & <man>","male_self":"...","male_to_female":"...",'
                        '"female_self":"...","female_to_male":"..."}]}. '
                        "addresses: one entry per man-woman pair who talk to each other (e.g. daughter-in-law & "
-                       "father-in-law -> con/bố, wife & husband -> em/anh). "
+                       "father-in-law -> con/bố, wife & husband -> em/anh), including side relationships such as "
+                       "coworkers, boss, neighbours or shop staff (e.g. Nao & male coworkers -> em/anh). "
                        f"Keep it short ({limit}). "
                        "Each vi_address value must be ONE Vietnamese pronoun such as anh, em, chị, cô, chú, "
                        "ông, bà, cháu, tôi, mình, sếp, chồng, vợ, chosen from the characters' relationship and "
@@ -132,6 +135,44 @@ def make_brief(cfg, texts, used):
             raise ValueError("brief has invalid shape")
         return normalize(data)
     raise last
+
+
+CAST_WINDOW = 80
+CAST_SCHEMA = {"type": "object", "required": ["lines"],
+               "properties": {"lines": {"type": "array", "items": {"type": "string"}}}}
+
+
+def cast(cfg, tagged_lines, brief, used, progress=lambda f: None):
+    """Per line "speaker>listener" from the brief's characters; "" where unsure or the window was refused."""
+    names = ", ".join(str(c.get("name_or_role")) for c in brief.get("characters", []) if c.get("name_or_role"))
+    starts = range(0, len(tagged_lines), CAST_WINDOW)
+    done = [0]
+
+    def one(start):
+        win = tagged_lines[start:start + CAST_WINDOW]
+        raw = _chat(cfg, f"Characters: {names}. Relationships: {brief.get('relationship', '')}\n"
+                         f"For each of the {len(win)} numbered Japanese subtitle lines below, say who speaks and to "
+                         "whom as \"<speaker>><listener>\" using the character names above (or a short role such as "
+                         "\"coworker\" for someone not listed). [M]/[F] is the voice's gender. Use \"\" when unsure. "
+                         f'Return only {{"lines": [...]}} with exactly {len(win)} strings.\n\n'
+                         + "\n".join(f"{i + 1}. {t}" for i, t in enumerate(win)),
+                    used, json_mode=True, max_tokens=4096, schema=CAST_SCHEMA)
+        try:
+            got = first_json(_content(raw))["lines"] if raw else None
+        except (ValueError, KeyError, TypeError):
+            got = None
+        done[0] += len(win)
+        progress(done[0] / len(tagged_lines))
+        return [_label(x) for x in got] if isinstance(got, list) and len(got) == len(win) else [""] * len(win)
+
+    with ThreadPoolExecutor(max_workers=max(1, int(cfg.get("cloud_parallel", 4)))) as pool:
+        return [label for labels in pool.map(one, starts) for label in labels]
+
+
+def _label(x):
+    """'Nao>""' / 'Nao>' / '""' -> 'Nao' / 'Nao' / '' (drop an empty side)."""
+    parts = [p.strip().strip('"\'') for p in str(x).split(">", 1)]
+    return ">".join(parts) if all(parts) else parts[0]
 
 
 def _text(v):
@@ -172,7 +213,12 @@ def run(cfg, db, batch):
                 else:
                     try:
                         segs = json.loads((d / "segments.json").read_text())
-                        brief = make_brief(cfg, [s["text"] for s in segs], used)
+                        report = lambda f, base, share, i=job["id"]: jobs.progress(db, i, base + share * f)
+                        brief = make_brief(cfg, [s["text"] for s in segs], used, lambda f: report(f, 0, 0.4))
+                        brief["speakers"] = cast(cfg, [tagged(s) for s in segs], brief, used,
+                                                 lambda f: report(f, 0.4, 0.6))
+                    except jobs.Stopped:  # paused mid-brief: don't cache a "skipped" brief
+                        raise
                     except Exception as e:
                         brief = {"skipped": f"{type(e).__name__}: {e}"[:300]}
                     rendered = json.dumps(brief, ensure_ascii=False)

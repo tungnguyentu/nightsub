@@ -10,6 +10,7 @@ DEFAULTS = {
     # Assumption (KTD6): verify tags/quality with scripts/bench.py.
     "models": {"en": "huihui_ai/qwen3-abliterated:8b", "vi": "gemma3:4b"},
     "fallback_model": "gemma3:4b",  # fits a 6 GB GPU fully; the 8B options do not
+    "cloud_fallback_model": None,  # e.g. "grok/grok-4.7": tried after the primary refuses, before fallback_model
     "brief_model": None,  # defaults to the Vietnamese model so EN and VI jobs share one scene brief
     # Models allowed to run split between GPU and CPU (no num_gpu 99, no min_gpu_share check), e.g. a 12B
     # fallback that only sees the few lines the cloud refuses. Slower (~5x on a 6 GB card), never silent.

@@ -24,6 +24,12 @@ def test_chat_parses_print_json(monkeypatch):
     assert agy.chat("agy/m", [{"content": "x"}]) == '["a"]\n'
 
 
+def test_schema_call_uses_structured_output_when_response_is_empty(monkeypatch):
+    out = json.dumps({"status": "SUCCESS", "response": "", "structured_output": {"lines": ["Nao>Shūji"]}})
+    monkeypatch.setattr(agy.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, out, ""))
+    assert json.loads(agy.chat("agy/m", [{"content": "x"}], json_schema={"type": "object"})) == {"lines": ["Nao>Shūji"]}
+
+
 def test_chat_logs_request_duration_without_prompt(monkeypatch, caplog):
     out = json.dumps({"status": "SUCCESS", "response": '["a"]'})
     monkeypatch.setattr(agy.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, out, ""))

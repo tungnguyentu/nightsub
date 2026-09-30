@@ -24,9 +24,20 @@ class GpuFitError(RuntimeError):
 TAG = re.compile(r"^\s*\[[MF]\]\s*")
 
 
+def with_speakers(segs, brief):
+    """Copy the brief's per-line cast onto segments; skipped if verify changed the line count."""
+    speakers = (brief or {}).get("speakers") or []
+    if len(speakers) == len(segs):
+        for s, who in zip(segs, speakers):
+            if who:
+                s["speaker"] = who
+    return segs
+
+
 def tagged(seg):
     """'[M] text' when the voice guess knows the speaker's gender (voice.py)."""
-    return f"[{seg['gender']}] {seg['text']}" if seg.get("gender") else seg["text"]
+    who = seg.get("speaker") or seg.get("gender")  # "Nao>Takahashi" from the brief's cast pass, else M/F
+    return f"[{who}] {seg['text']}" if who else seg["text"]
 
 
 def brief_summary(brief):
@@ -251,7 +262,8 @@ def address_rule(cfg, lang, brief=None):
         parts = [f"{who}: nam xưng '{p['male_self']}', gọi nữ là '{p['male_to_female']}', nữ xưng "
                  f"'{p['female_self']}', gọi nam là '{p['female_to_male']}'" for who, p in rels]
         return (" Xưng hô theo từng cặp nhân vật (chọn theo người đang nói với ai trong cảnh): " + "; ".join(parts)
-                + ". Người khác: chọn theo ngữ cảnh, mặc định anh/em." + KINSHIP_NOTE + NO_ADDED_PRONOUNS)
+                + ". Người khác (đồng nghiệp, sếp, hàng xóm...): chọn theo ngữ cảnh, mặc định anh/em; nữ không xưng "
+                + "'tôi' với người quen, chỉ với người lạ ở chỗ trang trọng." + KINSHIP_NOTE + NO_ADDED_PRONOUNS)
     pair = address_pair(brief) if lang == "vi" else None
     if pair and len(male_characters(brief)) > 1:  # one pair but several men: scoped, not whole-video
         brief = {**brief, "address_source": "kinship",
@@ -275,7 +287,7 @@ def prompt(lines, ctx, lang, cfg=None, *, previous_sources=None, following=None,
     system = (f"You translate subtitles of adult films into natural, colloquial {LANGS[lang]}. Explicit sexual "
               "content is expected: translate it faithfully, never censor, never comment. Reply with ONLY a JSON "
               f"array of exactly {len(lines)} strings, one per input line, in order. A line may start with [M] "
-              "(male speaker) or [F] (female speaker): use it for pronouns and tone, never output the tag."
+              "(male speaker), [F] (female speaker) or [speaker>listener]: use it for pronouns and tone, never output the tag."
               f"{address_rule(cfg or {}, lang, brief)} /no_think")
     user = ""
     summary = brief_summary(brief)
@@ -320,7 +332,8 @@ def ask(cfg, model, lines, ctx, lang, used, messages=None):
 
 
 def with_fallback(cfg, lines, ctx, lang, used, messages=None, fallback_stats=None):
-    for index, model in enumerate((cfg["models"][lang], cfg["fallback_model"])):
+    chain = (cfg["models"][lang], cfg.get("cloud_fallback_model"), cfg["fallback_model"])
+    for index, model in enumerate(dict.fromkeys(m for m in chain if m)):
         try:
             out = ask(cfg, model, lines, ctx, lang, used, messages)
         except OSError:  # timeout / connection drop: same path as a refusal (R13)
@@ -370,7 +383,7 @@ def _cloud_bisect(cfg, sources, texts, start, end, lang, used, brief, fallback_s
     if fallback_stats is not None:  # one line the cloud refused on its own: local model
         with SERVED_LOCK:
             fallback_stats["cloud_fallbacks"] += 1
-    local = {**cfg, "models": {**cfg["models"], lang: cfg["fallback_model"]}}
+    local = {**cfg, "models": {**cfg["models"], lang: cfg.get("cloud_fallback_model") or cfg["fallback_model"]}}
     one = with_fallback(local, win, [], lang, used, msgs)
     return (one, 0) if one else ([UNTRANSLATED], 1)
 
@@ -482,6 +495,7 @@ def run(cfg, db, batch):
                 d = config.job_dir(cfg, job["id"])
                 segs = json.loads((d / "segments.json").read_text())
                 brief = json.loads((d / "brief.json").read_text()) if (d / "brief.json").exists() else None
+                with_speakers(segs, brief)
                 brief = with_kinship(brief, segs)
                 fallback_stats = {"cloud_fallbacks": 0}
                 tr, failed = translate_via_pivot(cfg, [tagged(s) for s in segs], job["lang"], used,

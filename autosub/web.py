@@ -1,5 +1,6 @@
 """Local web UI (U8, KTD9): FastAPI on 127.0.0.1, one static page polling GET /jobs."""
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -125,7 +126,9 @@ def create_app(cfg, db):
         has_translation = artifact.name != "segments.json"
         brief_path = d / "brief.json"
         brief = json.loads(brief_path.read_text()) if brief_path.exists() else None
-        rows = [{"start": s.get("start"), "end": s.get("end"), "gender": s.get("gender"),
+        from .stages.translate import with_speakers
+        with_speakers(raw, brief)
+        rows = [{"start": s.get("start"), "end": s.get("end"), "gender": s.get("gender"), "speaker": s.get("speaker"),
                  "src": s.get("src", s.get("text")), "text": s.get("text") if has_translation else None,
                  "polished": bool(s.get("polished")),
                  "verified": s.get("verified"), "asr_alt": s.get("asr_alt"),
@@ -209,6 +212,7 @@ def serve(cfg, host="127.0.0.1", port=8765, allow_remote=False):
     import uvicorn
     check_host(host, allow_remote)
     db = config.db_path(cfg)
-    scheduler.start_worker(cfg, db)
+    if not os.environ.get("AUTOSUB_NO_WORKER"):  # view-only: watch another process's jobs (e.g. bench.py)
+        scheduler.start_worker(cfg, db)
     print(f"autosub UI: http://{host}:{port}")
     uvicorn.run(create_app(cfg, db), host=host, port=port, log_level="warning")
