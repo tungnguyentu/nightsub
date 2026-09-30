@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>nightsub</title>
 <style>
-  :root { --bg: #fafafa; --fg: #222; --muted: #777; --line: #ddd; --card: #fff; --acc: #2f6fde; --bad: #c0392b; --ok: #1e8449; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #161616; --fg: #ddd; --muted: #999; --line: #333; --card: #1f1f1f; --acc: #6b9bf2; --bad: #e57368; --ok: #58c27d; } }
+  :root { --bg: #f4f6fb; --fg: #1f2937; --muted: #667085; --line: #d9e0eb; --card: #fff; --subtle: #f8fafc; --acc: #356fe5; --bad: #c73939; --ok: #17824b; --shadow: 0 2px 10px #172b4d0d; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111827; --fg: #e5e7eb; --muted: #9ca3af; --line: #374151; --card: #18212f; --subtle: #111927; --acc: #78a6ff; --bad: #ff8980; --ok: #62d795; --shadow: 0 2px 12px #0004; } }
   * { box-sizing: border-box; }
-  body { font: 14px/1.45 system-ui, sans-serif; margin: 0; padding: 1.5rem; background: var(--bg); color: var(--fg); }
-  main { max-width: 1100px; margin: auto; }
-  h1 { margin: 0 0 1rem; font-size: 1.4rem; }
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem; background: var(--bg); color: var(--fg); overflow-x: hidden; }
+  main { max-width: 1180px; margin: auto; }
+  h1 { margin: 0 0 1rem; font-size: 1.55rem; letter-spacing: -.02em; }
   h2 { font-size: 1rem; margin: 0 0 .6rem; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 1rem; margin-bottom: 1rem; }
   .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
-  button { font: inherit; padding: .35rem .8rem; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); cursor: pointer; }
+  button { font: inherit; padding: .35rem .8rem; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--fg); cursor: pointer; white-space: nowrap; }
   button.primary { background: var(--acc); border-color: var(--acc); color: #fff; }
   button:disabled { opacity: .5; cursor: default; }
   input[type=text] { font: inherit; flex: 1; min-width: 16rem; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
@@ -27,18 +27,28 @@
   .chips span { display: inline-flex; gap: .3rem; align-items: center; border: 1px solid var(--line); border-radius: 99px; padding: .1rem .5rem; margin: .15rem; }
   .chips button { border: 0; padding: 0 .2rem; background: none; }
   table { border-collapse: collapse; width: 100%; }
+  table[aria-label="Hàng đợi phụ đề"], table[aria-label="Hàng đợi phụ đề"] tbody { display: block; }
+  table[aria-label="Hàng đợi phụ đề"] thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   th, td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
   th { font-weight: 600; color: var(--muted); }
   .bar { width: 8rem; height: .5rem; background: var(--line); border-radius: 99px; overflow: hidden; }
   .bar i { display: block; height: 100%; background: var(--acc); }
-  td.video { max-width: 22rem; overflow-wrap: anywhere; }
-  .actions { display: flex; gap: .3rem; flex-wrap: wrap; }
+  td.video { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .actions { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
   button, summary { min-height: 44px; }
   button:focus-visible, summary:focus-visible, input:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
-  .steps-cell { min-width: 0; max-width: 52rem; }
-  .steps-viewport { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
-  .step-strip { display: flex; min-width: 42rem; list-style: none; margin: 0; padding: .2rem 0; }
-  .step-item { position: relative; flex: 1 0 0; min-width: 7rem; text-align: center; color: var(--muted); }
+  .queue-card { display: grid; grid-template-columns: minmax(10rem, 1fr) auto minmax(0, 3.5fr) auto auto; gap: .8rem; align-items: center; margin: .65rem 0; padding: .85rem; border: 1px solid var(--line); border-radius: 10px; background: var(--subtle); }
+  .queue-card > td { min-width: 0; padding: 0; border: 0; }
+  .queue-card .job-id { display: none; }
+  .job-video { display: flex; align-items: center; gap: .5rem; min-width: 0; font-weight: 700; }
+  .job-video .video { display: block; min-width: 0; }
+  .lang-cell, .result-cell { font-size: .84rem; }
+  .lang-tag { display: inline-flex; align-items: center; gap: .3rem; padding: .18rem .48rem; border: 1px solid var(--line); border-radius: 99px; white-space: nowrap; }
+  .cloud-icon { color: var(--acc); cursor: help; font-size: 1rem; }
+  .steps-cell { min-width: 0; width: 100%; }
+  .steps-viewport { width: 100%; max-width: 100%; }
+  .step-strip { display: flex; width: 100%; min-width: 0; list-style: none; margin: 0; padding: .1rem 0; }
+  .step-item { position: relative; flex: 1 1 0; min-width: 0; text-align: center; color: var(--muted); }
   .step-item::after { content: ""; position: absolute; z-index: 0; top: 1rem; left: calc(50% + 1rem); width: calc(100% - 2rem); height: 2px; background: var(--line); }
   .step-item:last-child::after { display: none; }
   .step-item.is-complete::after { background: var(--ok); }
@@ -49,8 +59,8 @@
   .step-item.is-failed .step-icon { border-color: var(--bad); color: var(--bg); background: var(--bad); }
   .step-item.is-current .step-label { color: var(--acc); font-weight: 700; }
   .step-item.is-failed, .step-item.is-failed .step-label { color: var(--bad); }
-  .step-label { display: block; margin: .35rem .2rem 0; font-size: .78rem; line-height: 1.25; }
-  .step-meta { display: block; margin-top: .15rem; font-size: .7rem; white-space: nowrap; }
+  .step-label { display: block; margin: .25rem .1rem 0; font-size: .68rem; line-height: 1.2; }
+  .step-meta { display: block; margin-top: .1rem; font-size: .65rem; white-space: nowrap; }
   .step-item.is-complete .step-meta { color: var(--ok); }
   .step-item.is-failed .step-meta { color: var(--bad); }
   .step-progress { display: block; height: .25rem; max-width: 5rem; margin: .25rem auto 0; background: var(--line); border-radius: 99px; overflow: hidden; }
@@ -62,24 +72,43 @@
   #stepLegend ul { margin: .35rem 0 0; padding-left: 1.2rem; }
   #viewer[hidden] { display: none; }
   .viewer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .8rem; }
-  .brief { border: 1px solid var(--line); border-radius: 6px; padding: .7rem; margin: .6rem 0; }
+  .brief { border: 1px solid var(--line); border-radius: 8px; padding: .65rem .75rem; margin: .6rem 0; background: var(--subtle); max-width: 70rem; }
   .brief p { margin: .2rem 0; }
-  .table-scroll { overflow-x: auto; }
-  table.vlines { min-width: 650px; }
-  table.vlines td { vertical-align: top; overflow-wrap: anywhere; }
+  .brief-addresses { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .45rem; }
+  .brief-address { padding: .15rem .42rem; border: 1px solid var(--line); border-radius: 6px; font-size: .78rem; }
+  .table-scroll { overflow: auto; max-height: min(65vh, 44rem); border: 1px solid var(--line); border-radius: 8px; }
+  table.vlines { min-width: 700px; }
+  table.vlines th { position: sticky; top: 0; z-index: 1; background: var(--card); box-shadow: 0 1px 0 var(--line); }
+  table.vlines td { vertical-align: top; overflow-wrap: anywhere; line-height: 1.55; }
+  table.vlines td:nth-child(3) { color: var(--muted); font-family: ui-monospace, "Noto Sans JP", monospace; }
+  table.vlines td:nth-child(4) { font-weight: 550; }
+  .speaker-chip { display: inline-flex; max-width: 10rem; align-items: center; border: 1px solid currentColor; border-radius: 99px; padding: .1rem .45rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; font-weight: 650; }
   .badge { display: inline-block; border: 1px solid var(--line); border-radius: 99px; padding: .05rem .4rem; margin: .1rem; white-space: nowrap; font-size: .75rem; }
   .badge.polished { color: var(--ok); border-color: var(--ok); }
   .badge.failed { color: var(--bad); border-color: var(--bad); }
-  .cloud-note { display: block; max-width: 14rem; margin-top: .15rem; }
+  .job-error { grid-column: 1 / -1; margin: -.1rem 0 0; color: var(--bad); }
+  .job-error summary { display: block; min-height: 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job-error p { margin: .35rem 0 0; overflow-wrap: anywhere; }
   @media (max-width: 760px) {
     body { padding: .75rem; }
-    .step-strip { min-width: 42rem; }
-    #rows tr { display: grid; grid-template-columns: min-content minmax(0, 1fr); border-bottom: 1px solid var(--line); }
-    #rows td { border: 0; padding: .35rem; }
-    #rows td:nth-child(2) { grid-column: 2; }
-    #rows td:nth-child(3) { grid-column: 1; }
-    #rows td:nth-child(4), #rows td:nth-child(5), #rows td:nth-child(6) { grid-column: 1 / -1; }
+    .queue-card { grid-template-columns: minmax(0, 1fr) auto; gap: .55rem; }
+    .job-video { grid-column: 1 / -1; }
+    .steps-cell { grid-column: 1 / -1; }
+    .steps-viewport { overflow: visible; }
+    .step-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem .2rem; }
+    .step-item::after { display: none; }
+    .result-cell { grid-column: 1; }
+    .queue-card .actions { grid-column: 1 / -1; }
     .actions { gap: .5rem; }
+  }
+  @media (max-width: 420px) {
+    body { padding: .55rem; font-size: 13px; }
+    .card { padding: .75rem; border-radius: 10px; }
+    #dir { flex: 1 0 100%; min-width: 0; width: 100%; order: -1; }
+    .queue-card { padding: .7rem; }
+    .viewer-head { flex-direction: column; }
+    .viewer-head > button { align-self: flex-end; margin-top: -.25rem; }
+    .table-scroll { max-height: 58vh; }
   }
 </style>
 </head>
@@ -115,7 +144,7 @@
 
 <div class="card">
   <h2>Hàng đợi</h2>
-  <table>
+  <table aria-label="Hàng đợi phụ đề">
     <thead><tr><th>#</th><th>Video</th><th>Ngôn ngữ</th><th>Các bước</th><th>Kết quả</th><th>Thao tác</th></tr></thead>
     <tbody id="rows"><tr><td colspan="6" class="muted">Chưa có job nào.</td></tr></tbody>
   </table>
@@ -144,7 +173,7 @@ const fmt = s => s == null ? "—" : s < 60 ? "<1 phút" : `${Math.floor(s / 360
 const fmtDuration = s => s == null ? "—" : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
 const LANG = {en: "Anh", vi: "Việt"};
 const picked = new Set();
-let stepInfo = [], viewerRows = [];
+let stepInfo = [], viewerRows = [], activeViewer = null;
 
 async function api(path, opts = {}) {
   const r = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opts});
@@ -234,34 +263,59 @@ function addressLines(address) {
     ["Nữ tự xưng", address.female_self], ["Nữ gọi nam", address.female_to_male]]
     .filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join(" · ");
 }
+function addressCards(addresses) {
+  if (!Array.isArray(addresses) || !addresses.length) return "";
+  return `<div class="brief-addresses">${addresses.map(a => {
+    if (!a || typeof a !== "object") return "";
+    const pair = [["Nam", a.male_self, a.male_to_female], ["Nữ", a.female_self, a.female_to_male]]
+      .filter(([, self, to]) => self || to).map(([who, self, to]) => `${who}: ${self || "?"} → ${to || "?"}`).join(" · ");
+    return `<span class="brief-address" title="${esc(a.between || "Cặp xưng hô")}">${esc(a.between || "Cặp xưng hô")}: ${esc(pair)}</span>`;
+  }).join("")}</div>`;
+}
+function speakerChip(speaker, gender) {
+  const labels = speaker ? speaker.split(/>|→/).map(s => s.trim()).filter(Boolean) : [({M: "nam", F: "nữ"}[gender] || "?")];
+  return labels.map(label => {
+    let hash = 0;
+    for (const char of label) hash = (hash * 31 + char.codePointAt(0)) >>> 0;
+    const hue = hash % 360;
+    return `<span class="speaker-chip" title="${esc(label)}" style="color:hsl(${hue} 58% 47%);background:hsl(${hue} 72% 92% / .16)">${esc(label)}</span>`;
+  }).join(" ");
+}
 function renderViewer() {
   const rows = $("lineFilter").checked ? viewerRows.filter(r => r.failed || r.polished) : viewerRows;
   $("lineRows").innerHTML = rows.length ? rows.map(r => {
-    const gender = {M: "nam", F: "nữ"}[r.gender] || "?";
     const marks = `${r.verified ? `<span class="badge" title="Ứng viên còn lại: ${esc(r.asr_alt || "")}" aria-label="Đã đối chiếu; ứng viên còn lại: ${esc(r.asr_alt || "n/a")}">Đã đối chiếu</span>` : ""}${r.polished ? '<span class="badge polished">Đã chỉnh</span>' : ""}${r.failed ? '<span class="badge failed">Lỗi dịch</span>' : ""}`;
-    return `<tr><td>${timecode(r.start)}–${timecode(r.end)}</td><td>${gender}</td><td>${esc(r.src || "")}</td><td>${esc(r.text || "—")}</td><td>${marks || "—"}</td></tr>`;
+    return `<tr><td>${timecode(r.start)}–${timecode(r.end)}</td><td>${speakerChip(r.speaker, r.gender)}</td><td>${esc(r.src || "")}</td><td>${esc(r.text || "—")}</td><td>${marks || "—"}</td></tr>`;
   }).join("") : `<tr><td colspan="5" class="muted">Không có dòng phù hợp bộ lọc.</td></tr>`;
 }
-window.openViewer = async (id, lang) => {
+async function refreshViewer(scrollIntoView = false) {
+  if (!activeViewer) return;
   try {
-    const data = await api(`/jobs/${id}/lines`);
+    const scroll = document.querySelector(".table-scroll");
+    const saved = scroll ? {left: scroll.scrollLeft, top: scroll.scrollTop, page: window.scrollY} : null;
+    const data = await api(`/jobs/${activeViewer.id}/lines`);
     viewerRows = data.rows || [];
     const b = data.brief;
     $("brief").innerHTML = b && !b.skipped
-      ? `<b>Tóm tắt bối cảnh</b><p>${esc(b.summary || "Không có mô tả.")}</p>${b.relationship ? `<p><b>Quan hệ:</b> ${esc(b.relationship)}</p>` : ""}${b.setting ? `<p><b>Bối cảnh:</b> ${esc(b.setting)}</p>` : ""}${addressLines(b.vi_address) ? `<p><b>Cách xưng hô:</b> ${esc(addressLines(b.vi_address))}</p>` : ""}`
+      ? `<b>Tóm tắt bối cảnh</b><p>${esc(b.summary || "Không có mô tả.")}</p>${b.relationship ? `<p><b>Quan hệ:</b> ${esc(b.relationship)}</p>` : ""}${b.setting ? `<p><b>Bối cảnh:</b> ${esc(b.setting)}</p>` : ""}${addressLines(b.vi_address) ? `<p><b>Cách xưng hô:</b> ${esc(addressLines(b.vi_address))}</p>` : ""}${addressCards(b.addresses)}`
       : `<b>Không có tóm tắt bối cảnh</b>${b?.skipped ? `<p class="muted">${esc(b.skipped)}</p>` : ""}`;
     if (data.cloud_model) {
       $("brief").innerHTML += `<p class="muted" role="status" aria-atomic="true">Cloud fallback: ${Number(data.cloud_fallbacks) || 0} lượt (${esc(data.cloud_model)})</p>`;
     }
-    $("viewerTitle").textContent = `Xem phụ đề · job ${id}`;
-    $("translationLabel").textContent = `Bản dịch (${LANG[lang] || lang})`;
-    $("lineFilter").checked = false;
+    $("viewerTitle").textContent = `Xem phụ đề · job ${activeViewer.id}`;
+    $("translationLabel").textContent = `Bản dịch (${LANG[activeViewer.lang] || activeViewer.lang})`;
     $("viewer").hidden = false;
     renderViewer();
-    $("viewer").scrollIntoView({behavior: "smooth", block: "start"});
+    if (saved) { scroll.scrollLeft = saved.left; scroll.scrollTop = saved.top; window.scrollTo(0, saved.page); }
+    if (scrollIntoView) $("viewer").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (e) { $("msg").innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+}
+window.openViewer = async (id, lang) => {
+  activeViewer = {id, lang, done: false};
+  $("lineFilter").checked = false;
+  await refreshViewer(true);
 };
-$("closeViewer").onclick = () => { $("viewer").hidden = true; };
+$("closeViewer").onclick = () => { $("viewer").hidden = true; activeViewer = null; };
 $("lineFilter").onchange = renderViewer;
 
 function renderSteps(activeStep, stepRows = [], hasError = false) {
@@ -298,19 +352,23 @@ function activeStepFor(stage) {
 async function poll() {
   let rows;
   try { rows = await api("/jobs"); } catch { return; }
+  const openErrors = new Set([...$("rows").querySelectorAll("details[open]")]
+    .map(detail => detail.closest(".queue-card")?.dataset.job));
+  if (activeViewer && !rows.some(j => j.id === activeViewer.id)) activeViewer = null;
   $("rows").innerHTML = rows.length ? rows.map(j => {
     const done = j.stage === "done";
     const activeStep = activeStepFor(j.stage);
     const running = !done && !j.error;
     const result = done ? `${j.cues ?? "?"} dòng${j.failed_lines ? `, <span class="bad">${j.failed_lines} lỗi</span>` : ""}` : "";
-    return `<tr>
-      <td>${j.id}</td>
-      <td class="video" title="${esc(j.video)}">${esc(base(j.video))}</td>
-      <td>${esc(LANG[j.lang] || j.lang)}${j.cloud_model ? `<small class="muted cloud-note">☁ Dùng ${esc(j.cloud_model)} trên cloud; nội dung được gửi ra ngoài máy</small>` : ""}</td>
+    if (activeViewer?.id === j.id) activeViewer.done = done;
+    return `<tr class="queue-card" data-job="${j.id}">
+      <td class="job-id">${j.id}</td>
+      <td class="job-video"><span class="video" title="${esc(j.video)}">${esc(base(j.video))}</span></td>
+      <td class="lang-cell"><span class="lang-tag">${esc(LANG[j.lang] || j.lang)}${j.cloud_model ? `<span class="cloud-icon" title="Dùng ${esc(j.cloud_model)} trên cloud; nội dung được gửi ra ngoài máy" aria-label="Dùng model cloud">☁</span>` : ""}</span></td>
       <td class="steps-cell">${renderSteps(activeStep, j.steps, Boolean(j.error))}</td>
-      <td>${j.control === "delete" ? `<span class="muted">Đang xóa…</span>`
+      <td class="result-cell">${j.control === "delete" ? `<span class="muted">Đang xóa…</span>`
         : j.control === "pause" ? `<span class="muted">⏸ Đã tạm dừng</span>`
-        : j.error ? `<span class="bad" title="${esc(j.error)}">Lỗi: ${esc(j.error.slice(0, 80))}</span>`
+        : j.error ? ""
         : result || (!done ? (j.eta_s == null ? "" : `Còn ${fmt(j.eta_s)}`) : `<span class="ok">Xong</span>`)}</td>
       <td class="actions">
         ${j.stage !== "queued" ? `<button onclick="openViewer(${j.id}, '${esc(j.lang)}')">Xem phụ đề</button>` : ""}
@@ -319,12 +377,13 @@ async function poll() {
         ${j.error ? `<button onclick="retry(${j.id})">Thử lại</button>` : ""}
         ${done ? `<button onclick="mux(${j.id})" title="Tạo .subs.mkv với tất cả phụ đề đã có">Gắn vào video</button>` : ""}
         ${j.control !== "delete" ? `<button onclick="remove(${j.id}, ${running})" title="Xóa khỏi hàng đợi">Xóa</button>` : ""}
-      </td></tr>`;
+      </td>${j.error ? `<td class="job-error"><details${openErrors.has(String(j.id)) ? " open" : ""}><summary>Lỗi: ${esc(j.error.slice(0, 110))}</summary><p>${esc(j.error)}</p></details></td>` : ""}</tr>`;
   }).join("") : `<tr><td colspan="6" class="muted">Chưa có job nào.</td></tr>`;
 }
 
 $("lineFilter").checked = false;
 loadSteps(); doctor(); browse(); poll(); setInterval(poll, 2000);
+setInterval(() => { if (activeViewer && !activeViewer.done && !$("viewer").hidden) refreshViewer(); }, 10000);
 </script>
 </body>
 </html>
